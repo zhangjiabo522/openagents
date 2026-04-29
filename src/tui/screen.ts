@@ -29,23 +29,22 @@ export class Screen {
   private isLoading = false;
   private inputBuffer = '';
   private cursorPos = 0;
+  private agentPanelWidth = 22;
 
   constructor(options: ScreenOptions) {
     this.screen = blessed.screen({
       smartCSR: true,
       fullUnicode: true,
-      title: 'OpenAgents v2.2',
-      dockBorders: true,
+      title: 'OpenAgents v2.3',
+      dockBorders: false,
       input: process.stdin,
       output: process.stdout,
     });
 
-    // 初始化 Orchestrator
     const llm = new LLMClient(options.config.providers);
     this.orchestrator = new Orchestrator(options.config, llm);
     this.orchestrator.setApproveCallback((tool, params) => this.showApproval(tool, params));
 
-    // 加载会话
     if (options.resumeSessionId) {
       const loaded = Session.load(options.resumeSessionId);
       this.session = loaded || new Session(options.sessionName);
@@ -54,41 +53,44 @@ export class Screen {
       this.session = new Session(options.sessionName);
     }
 
-    this.createLayout();
+    this.buildLayout();
     this.bindEvents();
-    this.renderMessages();
-    this.renderAgents();
-    this.renderInputLine();
-    this.renderStatus();
+    this.renderAll();
   }
 
-  private createLayout(): void {
-    const cols = process.stdout.columns || 120;
-    const rows = process.stdout.rows || 30;
+  private get cols(): number {
+    return this.screen.cols || process.stdout.columns || 120;
+  }
 
-    // Agent 面板宽度固定 24 字符
-    const agentWidth = 24;
-    const chatWidth = cols - agentWidth;
+  private get rows(): number {
+    return this.screen.rows || process.stdout.rows || 30;
+  }
 
-    // 状态栏
+  private buildLayout(): void {
+    const w = this.cols;
+    const h = this.rows;
+    const agW = this.agentPanelWidth;
+    const chatW = w - agW - 1;
+
+    // 状态栏 - 第0行，全宽
     this.statusBar = blessed.box({
       parent: this.screen,
       top: 0,
       left: 0,
-      width: cols,
+      width: w,
       height: 1,
       tags: true,
       style: { fg: 'white', bg: 'blue' },
-      content: ' OpenAgents v2.2 | Ctrl+C 退出 | ESC 取消 | /help 帮助',
     });
 
-    // 聊天区域
+    // 聊天区 - 从第1行到倒数第4行
+    const chatH = h - 4;
     this.chatBox = blessed.box({
       parent: this.screen,
       top: 1,
       left: 0,
-      width: chatWidth,
-      height: rows - 4,
+      width: chatW,
+      height: chatH,
       label: ' Chat ',
       border: { type: 'line' },
       tags: true,
@@ -98,25 +100,25 @@ export class Screen {
       style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
     });
 
-    // Agent 面板
+    // Agent面板 - 紧贴chatBox右侧
     this.agentBox = blessed.box({
       parent: this.screen,
       top: 1,
-      left: chatWidth,
-      width: agentWidth,
-      height: rows - 4,
+      left: chatW,
+      width: agW,
+      height: chatH,
       label: ' Agents ',
       border: { type: 'line' },
       tags: true,
       style: { border: { fg: 'gray' }, label: { fg: 'cyan' } },
     });
 
-    // 输入行
+    // 输入区 - 最底部3行
     this.inputLine = blessed.box({
       parent: this.screen,
-      bottom: 0,
+      top: h - 3,
       left: 0,
-      width: cols,
+      width: w,
       height: 3,
       label: ' Input ',
       border: { type: 'line' },
@@ -136,21 +138,16 @@ export class Screen {
       this.handleKeyPress(key);
     });
 
-    // 监听 orchestrator
     this.orchestrator.on('response', (response: string) => {
       this.addMessage('agent_message', 'orchestrator', response);
       this.isLoading = false;
-      this.renderMessages();
-      this.renderAgents();
-      this.renderStatus();
-      this.renderInputLine();
+      this.renderAll();
     });
 
     this.orchestrator.on('error', (error: Error) => {
       this.addMessage('system', 'system', `错误: ${error.message}`);
       this.isLoading = false;
-      this.renderMessages();
-      this.renderInputLine();
+      this.renderAll();
     });
 
     this.orchestrator.on('status_change', () => {
@@ -159,7 +156,6 @@ export class Screen {
       this.renderStatus();
     });
 
-    // 定时刷新 agent 状态
     setInterval(() => {
       const newAgents = this.orchestrator.getState().agents;
       if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
@@ -168,26 +164,31 @@ export class Screen {
       }
     }, 2000);
 
-    // 窗口大小变化
     this.screen.on('resize', () => {
-      this.relayout();
+      this.rebuildLayout();
     });
   }
 
-  private relayout(): void {
-    const cols = process.stdout.columns || 120;
-    const rows = process.stdout.rows || 30;
-    const agentWidth = 24;
-    const chatWidth = cols - agentWidth;
+  private rebuildLayout(): void {
+    const w = this.cols;
+    const h = this.rows;
+    const agW = this.agentPanelWidth;
+    const chatW = w - agW - 1;
+    const chatH = h - 4;
 
-    this.statusBar.width = cols;
-    this.chatBox.width = chatWidth;
-    this.chatBox.height = rows - 4;
-    this.agentBox.left = chatWidth;
-    this.agentBox.width = agentWidth;
-    this.agentBox.height = rows - 4;
-    this.inputLine.width = cols;
-    this.screen.render();
+    this.statusBar.width = w;
+
+    this.chatBox.width = chatW;
+    this.chatBox.height = chatH;
+
+    this.agentBox.left = chatW;
+    this.agentBox.width = agW;
+    this.agentBox.height = chatH;
+
+    this.inputLine.top = h - 3;
+    this.inputLine.width = w;
+
+    this.renderAll();
   }
 
   private handleKeyPress(key: string): void {
@@ -197,14 +198,12 @@ export class Screen {
       process.exit(0);
     }
 
-    // ESC - 取消当前 AI 回复
+    // ESC - 取消
     if (key === '\x1b' && this.isLoading) {
       this.orchestrator.abort();
       this.isLoading = false;
       this.addMessage('system', 'system', '已取消');
-      this.renderMessages();
-      this.renderStatus();
-      this.renderInputLine();
+      this.renderAll();
       return;
     }
 
@@ -223,26 +222,23 @@ export class Screen {
       if (this.cursorPos > 0) {
         this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
         this.cursorPos--;
-        this.renderInputLine();
+        this.renderInput();
       }
       return;
     }
 
-    // 忽略其他控制字符
-    if (key.length === 1 && key.charCodeAt(0) < 32) {
-      return;
-    }
+    // 跳过控制字符
+    if (key.length === 1 && key.charCodeAt(0) < 32) return;
 
     // 普通字符
     if (key.length >= 1 && key.charCodeAt(0) >= 32) {
       this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key + this.inputBuffer.slice(this.cursorPos);
       this.cursorPos += key.length;
-      this.renderInputLine();
+      this.renderInput();
     }
   }
 
   private async submitInput(input: string): Promise<void> {
-    // 处理命令
     if (input.startsWith('/')) {
       this.handleCommand(input);
       return;
@@ -250,17 +246,14 @@ export class Screen {
 
     this.isLoading = true;
     this.renderStatus();
-    this.renderInputLine();
-
+    this.renderInput();
     this.addMessage('user_input', 'user', input);
     this.renderMessages();
 
     try {
       await this.orchestrator.processUserInput(input);
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        this.addMessage('system', 'system', '已取消');
-      } else {
+      if ((error as Error).name !== 'AbortError') {
         this.addMessage('system', 'system', `错误: ${(error as Error).message}`);
       }
       this.isLoading = false;
@@ -268,7 +261,7 @@ export class Screen {
 
     this.session.save();
     this.renderStatus();
-    this.renderInputLine();
+    this.renderInput();
   }
 
   private handleCommand(input: string): void {
@@ -299,17 +292,16 @@ export class Screen {
         this.showSessionPicker();
         break;
       case 'help':
-        this.addMessage('system', 'system', `可用命令:
-/quit, /exit  - 退出
-/clear        - 清屏
-/reset        - 重置 Agent
-/save         - 保存会话
-/sessions     - 历史会话
-/help         - 帮助
-
-快捷键:
-ESC           - 取消当前 AI 回复
-Ctrl+C        - 退出`);
+        this.addMessage('system', 'system', [
+          '/quit, /exit  - 退出',
+          '/clear        - 清屏',
+          '/reset        - 重置 Agent',
+          '/save         - 保存会话',
+          '/sessions     - 历史会话',
+          '/help         - 帮助',
+          '',
+          'ESC - 取消当前回复  Ctrl+C - 退出',
+        ].join('\n'));
         this.renderMessages();
         break;
       default:
@@ -319,7 +311,7 @@ Ctrl+C        - 退出`);
 
     this.inputBuffer = '';
     this.cursorPos = 0;
-    this.renderInputLine();
+    this.renderInput();
   }
 
   private addMessage(type: string, from: string, content: string): void {
@@ -332,6 +324,23 @@ Ctrl+C        - 退出`);
     };
     this.messages.push(msg);
     this.session.addMessage(msg);
+  }
+
+  // ─── 渲染 ───────────────────────────────────────────
+
+  private renderAll(): void {
+    this.renderStatus();
+    this.renderMessages();
+    this.renderAgents();
+    this.renderInput();
+  }
+
+  private renderStatus(): void {
+    const tag = this.isLoading ? '{yellow-fg}⟳ 处理中{/yellow-fg}' : '{green-fg}就绪{/green-fg}';
+    this.statusBar.setContent(
+      ` {bold}OpenAgents{/bold} │ ${this.session.getName()} │ ${tag} │ ${this.messages.length}条 │ ESC取消 │ /help`
+    );
+    this.screen.render();
   }
 
   private renderMessages(): void {
@@ -387,13 +396,13 @@ Ctrl+C        - 退出`);
         default: icon = '?'; color = 'white';
       }
 
-      // 单行显示：图标 名称 token数
-      const name = agent.name || agent.type;
-      const tk = agent.tokenUsage > 0 ? `${agent.tokenUsage}tk` : '';
-      lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${name}{/bold} {gray-fg}${tk}{/gray-fg}`);
+      const name = (agent.name || agent.type).slice(0, 10);
+      const tk = agent.tokenUsage > 0 ? ` ${agent.tokenUsage}tk` : '';
+      lines.push(`{${color}-fg}${icon}{/${color}-fg} ${name}${tk}`);
 
       if (agent.currentTask) {
-        lines.push(`  {yellow-fg}▶ ${agent.currentTask.description.slice(0, 16)}...{/yellow-fg}`);
+        const desc = agent.currentTask.description.slice(0, 14);
+        lines.push(`  {yellow-fg}${desc}{/yellow-fg}`);
       }
     }
 
@@ -405,44 +414,38 @@ Ctrl+C        - 退出`);
     this.screen.render();
   }
 
-  private renderStatus(): void {
-    const status = this.isLoading ? '{yellow-fg}⟳ 处理中{/yellow-fg}' : '{green-fg}就绪{/green-fg}';
-    this.statusBar.setContent(` {bold}OpenAgents v2.2{/bold} │ ${this.session.getName()} │ ${status} │ ${this.messages.length}条 │ ESC取消 │ /help`);
+  private renderInput(): void {
+    const prefix = this.isLoading ? '⟳ ' : '> ';
+    this.inputLine.setContent(prefix + this.inputBuffer + '█');
     this.screen.render();
   }
 
-  private renderInputLine(): void {
-    const prefix = this.isLoading ? '⟳ ' : '> ';
-    const display = prefix + this.inputBuffer + '█';
-    this.inputLine.setContent(display);
-    this.screen.render();
-  }
+  // ─── 弹窗 ───────────────────────────────────────────
 
   private showApproval(tool: string, params: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
       const command = params.command || '';
       const reason = params.reason || '';
+      const lines = [
+        '',
+        `  工具: ${tool}`,
+        `  命令: {red-fg}${command}{/red-fg}`,
+      ];
+      if (reason) lines.push(`  原因: ${reason}`);
+      lines.push('', '  按 {bold}Y{/bold} 执行 | 按 {bold}N{/bold} 拒绝');
 
       const box = blessed.box({
         parent: this.screen,
         top: 'center',
         left: 'center',
-        width: '60%',
-        height: reason ? 10 : 8,
-        label: ' ⚠️ 需要审批 ',
+        width: 50,
+        height: lines.length + 2,
+        label: ' ⚠ 审批 ',
         border: { type: 'double' },
         tags: true,
         style: { border: { fg: 'yellow' }, label: { fg: 'yellow' } },
-        content: [
-          '',
-          `  工具: ${tool}`,
-          `  命令: {red-fg}${command}{/red-fg}`,
-          reason ? `  原因: ${reason}` : '',
-          '',
-          '  按 {bold}Y{/bold} 执行 | 按 {bold}N{/bold} 拒绝',
-        ].filter(Boolean).join('\n'),
+        content: lines.join('\n'),
       });
-
       this.screen.render();
 
       const handler = (key: string) => {
@@ -458,7 +461,6 @@ Ctrl+C        - 退出`);
           resolve(false);
         }
       };
-
       process.stdin.on('data', handler);
     });
   }
@@ -480,15 +482,14 @@ Ctrl+C        - 退出`);
       parent: this.screen,
       top: 'center',
       left: 'center',
-      width: '70%',
+      width: 55,
       height: sessions.length + 6,
-      label: ' 历史会话 (输入编号选择, q取消) ',
+      label: ' 历史会话 (编号选择, q取消) ',
       border: { type: 'line' },
       tags: true,
       style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
       content: '\n' + lines.join('\n'),
     });
-
     this.screen.render();
 
     let buffer = '';
@@ -499,20 +500,15 @@ Ctrl+C        - 退出`);
         this.screen.render();
         return;
       }
-
-      if (key >= '0' && key <= '9') {
-        buffer += key;
-      }
-
+      if (key >= '0' && key <= '9') buffer += key;
       if (key === '\r' || key === '\n') {
-        const index = parseInt(buffer) - 1;
-        if (index >= 0 && index < sessions.length) {
-          const loaded = Session.load(sessions[index].id);
+        const idx = parseInt(buffer) - 1;
+        if (idx >= 0 && idx < sessions.length) {
+          const loaded = Session.load(sessions[idx].id);
           if (loaded) {
             this.session = loaded;
             this.messages = loaded.getMessages();
-            this.renderMessages();
-            this.renderStatus();
+            this.renderAll();
           }
         }
         box.destroy();
@@ -520,7 +516,6 @@ Ctrl+C        - 退出`);
         this.screen.render();
       }
     };
-
     process.stdin.on('data', handler);
   }
 

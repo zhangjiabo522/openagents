@@ -1,6 +1,6 @@
 {
   "name": "openagents",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Terminal multi-agent collaboration CLI tool",
   "type": "module",
   "main": "dist/index.js",

@@ -1536,12 +1536,13 @@ var init_screen = __esm({
       isLoading = false;
       inputBuffer = "";
       cursorPos = 0;
+      agentPanelWidth = 22;
       constructor(options) {
         this.screen = blessed.screen({
           smartCSR: true,
           fullUnicode: true,
-          title: "OpenAgents v2.2",
-          dockBorders: true,
+          title: "OpenAgents v2.3",
+          dockBorders: false,
           input: process.stdin,
           output: process.stdout
         });
@@ -1555,34 +1556,37 @@ var init_screen = __esm({
         } else {
           this.session = new Session(options.sessionName);
         }
-        this.createLayout();
+        this.buildLayout();
         this.bindEvents();
-        this.renderMessages();
-        this.renderAgents();
-        this.renderInputLine();
-        this.renderStatus();
+        this.renderAll();
       }
-      createLayout() {
-        const cols = process.stdout.columns || 120;
-        const rows = process.stdout.rows || 30;
-        const agentWidth = 24;
-        const chatWidth = cols - agentWidth;
+      get cols() {
+        return this.screen.cols || process.stdout.columns || 120;
+      }
+      get rows() {
+        return this.screen.rows || process.stdout.rows || 30;
+      }
+      buildLayout() {
+        const w = this.cols;
+        const h = this.rows;
+        const agW = this.agentPanelWidth;
+        const chatW = w - agW - 1;
         this.statusBar = blessed.box({
           parent: this.screen,
           top: 0,
           left: 0,
-          width: cols,
+          width: w,
           height: 1,
           tags: true,
-          style: { fg: "white", bg: "blue" },
-          content: " OpenAgents v2.2 | Ctrl+C \u9000\u51FA | ESC \u53D6\u6D88 | /help \u5E2E\u52A9"
+          style: { fg: "white", bg: "blue" }
         });
+        const chatH = h - 4;
         this.chatBox = blessed.box({
           parent: this.screen,
           top: 1,
           left: 0,
-          width: chatWidth,
-          height: rows - 4,
+          width: chatW,
+          height: chatH,
           label: " Chat ",
           border: { type: "line" },
           tags: true,
@@ -1594,9 +1598,9 @@ var init_screen = __esm({
         this.agentBox = blessed.box({
           parent: this.screen,
           top: 1,
-          left: chatWidth,
-          width: agentWidth,
-          height: rows - 4,
+          left: chatW,
+          width: agW,
+          height: chatH,
           label: " Agents ",
           border: { type: "line" },
           tags: true,
@@ -1604,9 +1608,9 @@ var init_screen = __esm({
         });
         this.inputLine = blessed.box({
           parent: this.screen,
-          bottom: 0,
+          top: h - 3,
           left: 0,
-          width: cols,
+          width: w,
           height: 3,
           label: " Input ",
           border: { type: "line" },
@@ -1626,16 +1630,12 @@ var init_screen = __esm({
         this.orchestrator.on("response", (response) => {
           this.addMessage("agent_message", "orchestrator", response);
           this.isLoading = false;
-          this.renderMessages();
-          this.renderAgents();
-          this.renderStatus();
-          this.renderInputLine();
+          this.renderAll();
         });
         this.orchestrator.on("error", (error) => {
           this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
           this.isLoading = false;
-          this.renderMessages();
-          this.renderInputLine();
+          this.renderAll();
         });
         this.orchestrator.on("status_change", () => {
           this.agents = this.orchestrator.getState().agents;
@@ -1650,22 +1650,24 @@ var init_screen = __esm({
           }
         }, 2e3);
         this.screen.on("resize", () => {
-          this.relayout();
+          this.rebuildLayout();
         });
       }
-      relayout() {
-        const cols = process.stdout.columns || 120;
-        const rows = process.stdout.rows || 30;
-        const agentWidth = 24;
-        const chatWidth = cols - agentWidth;
-        this.statusBar.width = cols;
-        this.chatBox.width = chatWidth;
-        this.chatBox.height = rows - 4;
-        this.agentBox.left = chatWidth;
-        this.agentBox.width = agentWidth;
-        this.agentBox.height = rows - 4;
-        this.inputLine.width = cols;
-        this.screen.render();
+      rebuildLayout() {
+        const w = this.cols;
+        const h = this.rows;
+        const agW = this.agentPanelWidth;
+        const chatW = w - agW - 1;
+        const chatH = h - 4;
+        this.statusBar.width = w;
+        this.chatBox.width = chatW;
+        this.chatBox.height = chatH;
+        this.agentBox.left = chatW;
+        this.agentBox.width = agW;
+        this.agentBox.height = chatH;
+        this.inputLine.top = h - 3;
+        this.inputLine.width = w;
+        this.renderAll();
       }
       handleKeyPress(key) {
         if (key === "") {
@@ -1676,9 +1678,7 @@ var init_screen = __esm({
           this.orchestrator.abort();
           this.isLoading = false;
           this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
-          this.renderMessages();
-          this.renderStatus();
-          this.renderInputLine();
+          this.renderAll();
           return;
         }
         if (key === "\r" || key === "\n") {
@@ -1693,17 +1693,15 @@ var init_screen = __esm({
           if (this.cursorPos > 0) {
             this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
             this.cursorPos--;
-            this.renderInputLine();
+            this.renderInput();
           }
           return;
         }
-        if (key.length === 1 && key.charCodeAt(0) < 32) {
-          return;
-        }
+        if (key.length === 1 && key.charCodeAt(0) < 32) return;
         if (key.length >= 1 && key.charCodeAt(0) >= 32) {
           this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key + this.inputBuffer.slice(this.cursorPos);
           this.cursorPos += key.length;
-          this.renderInputLine();
+          this.renderInput();
         }
       }
       async submitInput(input) {
@@ -1713,22 +1711,20 @@ var init_screen = __esm({
         }
         this.isLoading = true;
         this.renderStatus();
-        this.renderInputLine();
+        this.renderInput();
         this.addMessage("user_input", "user", input);
         this.renderMessages();
         try {
           await this.orchestrator.processUserInput(input);
         } catch (error) {
-          if (error.name === "AbortError") {
-            this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
-          } else {
+          if (error.name !== "AbortError") {
             this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
           }
           this.isLoading = false;
         }
         this.session.save();
         this.renderStatus();
-        this.renderInputLine();
+        this.renderInput();
       }
       handleCommand(input) {
         const cmd = input.slice(1).trim().split(" ")[0];
@@ -1757,17 +1753,16 @@ var init_screen = __esm({
             this.showSessionPicker();
             break;
           case "help":
-            this.addMessage("system", "system", `\u53EF\u7528\u547D\u4EE4:
-/quit, /exit  - \u9000\u51FA
-/clear        - \u6E05\u5C4F
-/reset        - \u91CD\u7F6E Agent
-/save         - \u4FDD\u5B58\u4F1A\u8BDD
-/sessions     - \u5386\u53F2\u4F1A\u8BDD
-/help         - \u5E2E\u52A9
-
-\u5FEB\u6377\u952E:
-ESC           - \u53D6\u6D88\u5F53\u524D AI \u56DE\u590D
-Ctrl+C        - \u9000\u51FA`);
+            this.addMessage("system", "system", [
+              "/quit, /exit  - \u9000\u51FA",
+              "/clear        - \u6E05\u5C4F",
+              "/reset        - \u91CD\u7F6E Agent",
+              "/save         - \u4FDD\u5B58\u4F1A\u8BDD",
+              "/sessions     - \u5386\u53F2\u4F1A\u8BDD",
+              "/help         - \u5E2E\u52A9",
+              "",
+              "ESC - \u53D6\u6D88\u5F53\u524D\u56DE\u590D  Ctrl+C - \u9000\u51FA"
+            ].join("\n"));
             this.renderMessages();
             break;
           default:
@@ -1776,7 +1771,7 @@ Ctrl+C        - \u9000\u51FA`);
         }
         this.inputBuffer = "";
         this.cursorPos = 0;
-        this.renderInputLine();
+        this.renderInput();
       }
       addMessage(type, from, content) {
         const msg = {
@@ -1788,6 +1783,20 @@ Ctrl+C        - \u9000\u51FA`);
         };
         this.messages.push(msg);
         this.session.addMessage(msg);
+      }
+      // ─── 渲染 ───────────────────────────────────────────
+      renderAll() {
+        this.renderStatus();
+        this.renderMessages();
+        this.renderAgents();
+        this.renderInput();
+      }
+      renderStatus() {
+        const tag = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
+        this.statusBar.setContent(
+          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 ESC\u53D6\u6D88 \u2502 /help`
+        );
+        this.screen.render();
       }
       renderMessages() {
         const lines = [];
@@ -1848,11 +1857,12 @@ Ctrl+C        - \u9000\u51FA`);
               icon = "?";
               color = "white";
           }
-          const name = agent.name || agent.type;
-          const tk = agent.tokenUsage > 0 ? `${agent.tokenUsage}tk` : "";
-          lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${name}{/bold} {gray-fg}${tk}{/gray-fg}`);
+          const name = (agent.name || agent.type).slice(0, 10);
+          const tk = agent.tokenUsage > 0 ? ` ${agent.tokenUsage}tk` : "";
+          lines.push(`{${color}-fg}${icon}{/${color}-fg} ${name}${tk}`);
           if (agent.currentTask) {
-            lines.push(`  {yellow-fg}\u25B6 ${agent.currentTask.description.slice(0, 16)}...{/yellow-fg}`);
+            const desc = agent.currentTask.description.slice(0, 14);
+            lines.push(`  {yellow-fg}${desc}{/yellow-fg}`);
           }
         }
         if (lines.length === 0) {
@@ -1861,39 +1871,34 @@ Ctrl+C        - \u9000\u51FA`);
         this.agentBox.setContent(lines.join("\n"));
         this.screen.render();
       }
-      renderStatus() {
-        const status = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
-        this.statusBar.setContent(` {bold}OpenAgents v2.2{/bold} \u2502 ${this.session.getName()} \u2502 ${status} \u2502 ${this.messages.length}\u6761 \u2502 ESC\u53D6\u6D88 \u2502 /help`);
-        this.screen.render();
-      }
-      renderInputLine() {
+      renderInput() {
         const prefix = this.isLoading ? "\u27F3 " : "> ";
-        const display = prefix + this.inputBuffer + "\u2588";
-        this.inputLine.setContent(display);
+        this.inputLine.setContent(prefix + this.inputBuffer + "\u2588");
         this.screen.render();
       }
+      // ─── 弹窗 ───────────────────────────────────────────
       showApproval(tool, params) {
         return new Promise((resolve2) => {
           const command = params.command || "";
           const reason = params.reason || "";
+          const lines = [
+            "",
+            `  \u5DE5\u5177: ${tool}`,
+            `  \u547D\u4EE4: {red-fg}${command}{/red-fg}`
+          ];
+          if (reason) lines.push(`  \u539F\u56E0: ${reason}`);
+          lines.push("", "  \u6309 {bold}Y{/bold} \u6267\u884C | \u6309 {bold}N{/bold} \u62D2\u7EDD");
           const box = blessed.box({
             parent: this.screen,
             top: "center",
             left: "center",
-            width: "60%",
-            height: reason ? 10 : 8,
-            label: " \u26A0\uFE0F \u9700\u8981\u5BA1\u6279 ",
+            width: 50,
+            height: lines.length + 2,
+            label: " \u26A0 \u5BA1\u6279 ",
             border: { type: "double" },
             tags: true,
             style: { border: { fg: "yellow" }, label: { fg: "yellow" } },
-            content: [
-              "",
-              `  \u5DE5\u5177: ${tool}`,
-              `  \u547D\u4EE4: {red-fg}${command}{/red-fg}`,
-              reason ? `  \u539F\u56E0: ${reason}` : "",
-              "",
-              "  \u6309 {bold}Y{/bold} \u6267\u884C | \u6309 {bold}N{/bold} \u62D2\u7EDD"
-            ].filter(Boolean).join("\n")
+            content: lines.join("\n")
           });
           this.screen.render();
           const handler = (key) => {
@@ -1927,9 +1932,9 @@ Ctrl+C        - \u9000\u51FA`);
           parent: this.screen,
           top: "center",
           left: "center",
-          width: "70%",
+          width: 55,
           height: sessions.length + 6,
-          label: " \u5386\u53F2\u4F1A\u8BDD (\u8F93\u5165\u7F16\u53F7\u9009\u62E9, q\u53D6\u6D88) ",
+          label: " \u5386\u53F2\u4F1A\u8BDD (\u7F16\u53F7\u9009\u62E9, q\u53D6\u6D88) ",
           border: { type: "line" },
           tags: true,
           style: { border: { fg: "cyan" }, label: { fg: "cyan" } },
@@ -1944,18 +1949,15 @@ Ctrl+C        - \u9000\u51FA`);
             this.screen.render();
             return;
           }
-          if (key >= "0" && key <= "9") {
-            buffer += key;
-          }
+          if (key >= "0" && key <= "9") buffer += key;
           if (key === "\r" || key === "\n") {
-            const index = parseInt(buffer) - 1;
-            if (index >= 0 && index < sessions.length) {
-              const loaded = Session.load(sessions[index].id);
+            const idx = parseInt(buffer) - 1;
+            if (idx >= 0 && idx < sessions.length) {
+              const loaded = Session.load(sessions[idx].id);
               if (loaded) {
                 this.session = loaded;
                 this.messages = loaded.getMessages();
-                this.renderMessages();
-                this.renderStatus();
+                this.renderAll();
               }
             }
             box.destroy();
@@ -2339,7 +2341,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.2.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.3.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
