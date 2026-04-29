@@ -1513,42 +1513,41 @@ var init_screen = __esm({
       screen;
       chatBox;
       agentBox;
-      inputBox;
       statusBar;
-      approvalBox;
+      inputLine;
       orchestrator;
       session;
       messages = [];
       agents = [];
       isLoading = false;
-      approveResolve;
+      inputBuffer = "";
+      cursorPos = 0;
       constructor(options) {
         this.screen = blessed.screen({
           smartCSR: true,
           fullUnicode: true,
           title: "OpenAgents v2.0",
-          dockBorders: true
+          dockBorders: true,
+          input: process.stdin,
+          output: process.stdout
         });
         const llm = new LLMClient(options.config.providers);
         this.orchestrator = new Orchestrator(options.config, llm);
-        this.orchestrator.setApproveCallback((tool, params) => {
-          return this.showApproval(tool, params);
-        });
+        this.orchestrator.setApproveCallback((tool, params) => this.showApproval(tool, params));
         if (options.resumeSessionId) {
           const loaded = Session.load(options.resumeSessionId);
           this.session = loaded || new Session(options.sessionName);
-          if (loaded) {
-            this.messages = loaded.getMessages();
-          }
+          if (loaded) this.messages = loaded.getMessages();
         } else {
           this.session = new Session(options.sessionName);
         }
-        this.setupLayout();
-        this.setupEvents();
+        this.createLayout();
+        this.bindEvents();
         this.renderMessages();
         this.renderAgents();
+        this.renderInputLine();
       }
-      setupLayout() {
+      createLayout() {
         this.statusBar = blessed.box({
           parent: this.screen,
           top: 0,
@@ -1556,11 +1555,8 @@ var init_screen = __esm({
           width: "100%",
           height: 1,
           tags: true,
-          style: {
-            fg: "white",
-            bg: "blue"
-          },
-          content: ` {bold}OpenAgents v2.0{/bold} \u2502 \u4F1A\u8BDD: ${this.session.getName()} \u2502 \u6309 {bold}Tab{/bold} \u5207\u6362\u9762\u677F \u2502 {bold}Ctrl+C{/bold} \u9000\u51FA \u2502 {bold}/help{/bold} \u5E2E\u52A9`
+          style: { fg: "white", bg: "blue" },
+          content: " OpenAgents v2.0 | \u4F1A\u8BDD: " + this.session.getName() + " | Ctrl+C \u9000\u51FA | /help \u5E2E\u52A9"
         });
         this.chatBox = blessed.box({
           parent: this.screen,
@@ -1568,18 +1564,13 @@ var init_screen = __esm({
           left: 0,
           width: "75%",
           height: "100%-4",
-          label: " {bold}Chat{/bold} ",
+          label: " Chat ",
           border: { type: "line" },
           tags: true,
           scrollable: true,
           alwaysScroll: true,
-          scrollbar: {
-            style: { bg: "gray" }
-          },
-          style: {
-            border: { fg: "cyan" },
-            label: { fg: "cyan" }
-          }
+          scrollbar: { style: { bg: "gray" } },
+          style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
         });
         this.agentBox = blessed.box({
           parent: this.screen,
@@ -1587,132 +1578,114 @@ var init_screen = __esm({
           left: "75%",
           width: "25%",
           height: "100%-4",
-          label: " {bold}Agents{/bold} ",
+          label: " Agents ",
           border: { type: "line" },
           tags: true,
-          scrollable: true,
-          style: {
-            border: { fg: "gray" },
-            label: { fg: "cyan" }
-          }
+          style: { border: { fg: "gray" }, label: { fg: "cyan" } }
         });
-        this.inputBox = blessed.textbox({
+        this.inputLine = blessed.box({
           parent: this.screen,
           bottom: 0,
           left: 0,
           width: "100%",
           height: 3,
-          label: " {bold}Input{/bold} ",
+          label: " Input ",
           border: { type: "line" },
           tags: true,
-          style: {
-            border: { fg: "cyan" },
-            label: { fg: "cyan" }
-          }
+          style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
         });
       }
-      setupEvents() {
+      bindEvents() {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.setEncoding("utf-8");
+        process.stdin.on("data", (key) => {
+          this.handleKeyPress(key);
+        });
         this.orchestrator.on("response", (response) => {
-          this.addMessage({
-            type: "agent_message",
-            from: "orchestrator",
-            content: response
-          });
+          this.addMessage("agent_message", "orchestrator", response);
           this.isLoading = false;
-          this.updateStatus();
           this.renderMessages();
           this.renderAgents();
-          this.focusInput();
+          this.renderStatus();
+          this.renderInputLine();
         });
         this.orchestrator.on("error", (error) => {
-          this.addMessage({
-            type: "system",
-            from: "system",
-            content: `\u9519\u8BEF: ${error.message}`
-          });
+          this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
           this.isLoading = false;
-          this.updateStatus();
           this.renderMessages();
-          this.focusInput();
+          this.renderInputLine();
         });
         this.orchestrator.on("status_change", () => {
           this.agents = this.orchestrator.getState().agents;
           this.renderAgents();
         });
-        this.screen.key(["C-c"], () => {
-          this.session.save();
-          process.exit(0);
-        });
-        this.screen.key(["tab"], () => {
-          if (this.screen.focused === this.chatBox) {
-            this.screen.focusGrabbed = false;
-            this.agentBox.focus();
-          } else {
-            this.screen.focusGrabbed = false;
-            this.chatBox.focus();
-          }
-        });
-        this.inputBox.on("submit", (value) => {
-          this.handleInput(value);
-        });
         setInterval(() => {
-          if (this.orchestrator) {
-            const newAgents = this.orchestrator.getState().agents;
-            if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
-              this.agents = newAgents;
-              this.renderAgents();
-            }
+          const newAgents = this.orchestrator.getState().agents;
+          if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
+            this.agents = newAgents;
+            this.renderAgents();
           }
-        }, 2e3);
-        this.focusInput();
+        }, 3e3);
       }
-      async handleInput(input) {
-        this.inputBox.clearValue();
-        this.screen.render();
-        if (!input.trim()) {
-          this.focusInput();
+      handleKeyPress(key) {
+        if (key === "") {
+          this.cleanup();
+          process.exit(0);
+        }
+        if (key === "\r" || key === "\n") {
+          if (this.inputBuffer.trim() && !this.isLoading) {
+            this.submitInput(this.inputBuffer);
+            this.inputBuffer = "";
+            this.cursorPos = 0;
+          }
           return;
         }
-        if (this.isLoading) {
-          this.focusInput();
+        if (key === "\x7F" || key === "\b") {
+          if (this.cursorPos > 0) {
+            this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
+            this.cursorPos--;
+            this.renderInputLine();
+          }
           return;
         }
+        if (key.length === 1 && key.charCodeAt(0) < 32) {
+          return;
+        }
+        if (key.length >= 1 && key.charCodeAt(0) >= 32) {
+          this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key + this.inputBuffer.slice(this.cursorPos);
+          this.cursorPos += key.length;
+          this.renderInputLine();
+        }
+      }
+      async submitInput(input) {
         if (input.startsWith("/")) {
           this.handleCommand(input);
-          this.focusInput();
           return;
         }
         this.isLoading = true;
-        this.updateStatus();
-        this.addMessage({
-          type: "user_input",
-          from: "user",
-          content: input
-        });
+        this.renderStatus();
+        this.renderInputLine();
+        this.addMessage("user_input", "user", input);
         this.renderMessages();
         try {
           await this.orchestrator.processUserInput(input);
         } catch (error) {
-          this.addMessage({
-            type: "system",
-            from: "system",
-            content: `\u9519\u8BEF: ${error.message}`
-          });
+          this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
           this.isLoading = false;
         }
-        if (true) {
-          this.session.save();
-        }
-        this.updateStatus();
-        this.renderMessages();
-        this.focusInput();
+        this.session.save();
+        this.renderStatus();
+        this.renderInputLine();
       }
       handleCommand(input) {
         const cmd = input.slice(1).trim().split(" ")[0];
         switch (cmd) {
           case "quit":
           case "exit":
-            this.session.save();
+            this.cleanup();
             process.exit(0);
             break;
           case "clear":
@@ -1727,51 +1700,44 @@ var init_screen = __esm({
             break;
           case "save":
             this.session.save();
-            this.addMessage({ type: "system", from: "system", content: "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58" });
+            this.addMessage("system", "system", "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
             this.renderMessages();
-            break;
-          case "agents":
-            this.agentBox.focus();
             break;
           case "sessions":
             this.showSessionPicker();
             break;
           case "help":
-            this.addMessage({
-              type: "system",
-              from: "system",
-              content: `\u53EF\u7528\u547D\u4EE4:
-/quit, /exit    - \u9000\u51FA\u7A0B\u5E8F
-/clear          - \u6E05\u5C4F
-/reset          - \u91CD\u7F6E\u6240\u6709 Agent
-/save           - \u4FDD\u5B58\u4F1A\u8BDD
-/sessions       - \u9009\u62E9\u5386\u53F2\u4F1A\u8BDD
-/agents         - \u805A\u7126 Agent \u9762\u677F
-/help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`
-            });
+            this.addMessage("system", "system", `\u53EF\u7528\u547D\u4EE4:
+/quit, /exit  - \u9000\u51FA
+/clear        - \u6E05\u5C4F
+/reset        - \u91CD\u7F6E Agent
+/save         - \u4FDD\u5B58\u4F1A\u8BDD
+/sessions     - \u5386\u53F2\u4F1A\u8BDD
+/help         - \u5E2E\u52A9`);
             this.renderMessages();
             break;
           default:
-            this.addMessage({
-              type: "system",
-              from: "system",
-              content: `\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9\u3002`
-            });
+            this.addMessage("system", "system", `\u672A\u77E5\u547D\u4EE4: ${cmd}`);
             this.renderMessages();
         }
+        this.inputBuffer = "";
+        this.cursorPos = 0;
+        this.renderInputLine();
       }
-      addMessage(msg) {
-        const fullMsg = {
-          ...msg,
+      addMessage(type, from, content) {
+        const msg = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type,
+          from,
+          content,
           timestamp: /* @__PURE__ */ new Date()
         };
-        this.messages.push(fullMsg);
-        this.session.addMessage(fullMsg);
+        this.messages.push(msg);
+        this.session.addMessage(msg);
       }
       renderMessages() {
         const lines = [];
-        for (const msg of this.messages.slice(-100)) {
+        for (const msg of this.messages.slice(-80)) {
           const time = msg.timestamp.toLocaleTimeString();
           let prefix;
           let color;
@@ -1785,16 +1751,15 @@ var init_screen = __esm({
               color = "yellow";
               break;
             case "system":
-              prefix = "System";
+              prefix = "!";
               color = "magenta";
               break;
             default:
               prefix = msg.from;
               color = "white";
           }
-          const contentLines = msg.content.split("\n");
           lines.push(`{${color}-fg}{bold}[${prefix}]{/bold}{/${color}-fg} {gray-fg}${time}{/gray-fg}`);
-          for (const line of contentLines) {
+          for (const line of msg.content.split("\n")) {
             lines.push(`  ${line}`);
           }
           lines.push("");
@@ -1806,150 +1771,155 @@ var init_screen = __esm({
       renderAgents() {
         const lines = [];
         for (const agent of this.agents) {
-          let statusIcon;
-          let statusColor;
+          let icon;
+          let color;
           switch (agent.status) {
             case "idle":
-              statusIcon = "\u25CB";
-              statusColor = "gray";
+              icon = "\u25CB";
+              color = "gray";
               break;
             case "working":
-              statusIcon = "\u25CF";
-              statusColor = "green";
+              icon = "\u25CF";
+              color = "green";
               break;
             case "thinking":
-              statusIcon = "\u25D0";
-              statusColor = "yellow";
+              icon = "\u25D0";
+              color = "yellow";
               break;
             case "error":
-              statusIcon = "\u2717";
-              statusColor = "red";
+              icon = "\u2717";
+              color = "red";
               break;
             default:
-              statusIcon = "?";
-              statusColor = "white";
+              icon = "?";
+              color = "white";
           }
-          lines.push(`{${statusColor}-fg}${statusIcon}{/${statusColor}-fg} {bold}${agent.name}{/bold}`);
-          lines.push(`  {gray-fg}${agent.type} | Token: ${agent.tokenUsage}{/gray-fg}`);
+          lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${agent.name}{/bold}`);
+          lines.push(`  {gray-fg}${agent.type} | ${agent.tokenUsage}tk{/gray-fg}`);
           if (agent.currentTask) {
-            lines.push(`  {yellow-fg}${agent.currentTask.description.slice(0, 25)}...{/yellow-fg}`);
+            lines.push(`  {yellow-fg}\u25B6 ${agent.currentTask.description.slice(0, 20)}...{/yellow-fg}`);
           }
           lines.push("");
+        }
+        if (lines.length === 0) {
+          lines.push("{gray-fg}\u7B49\u5F85\u542F\u52A8...{/gray-fg}");
         }
         this.agentBox.setContent(lines.join("\n"));
         this.screen.render();
       }
-      updateStatus() {
-        const status = this.isLoading ? "{yellow-fg}\u5904\u7406\u4E2D...{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
-        this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} \u2502 \u4F1A\u8BDD: ${this.session.getName()} \u2502 \u72B6\u6001: ${status} \u2502 \u6D88\u606F: ${this.messages.length} \u2502 {bold}Tab{/bold} \u5207\u6362 \u2502 {bold}Ctrl+C{/bold} \u9000\u51FA`);
+      renderStatus() {
+        const status = this.isLoading ? "{yellow-fg}\u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
+        this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} \u2502 ${this.session.getName()} \u2502 ${status} \u2502 ${this.messages.length}\u6761\u6D88\u606F \u2502 /help`);
         this.screen.render();
       }
-      focusInput() {
-        this.inputBox.focus();
+      renderInputLine() {
+        const prefix = this.isLoading ? "\u27F3 " : "> ";
+        const display = prefix + this.inputBuffer + "\u2588";
+        this.inputLine.setContent(display);
         this.screen.render();
       }
       showApproval(tool, params) {
         return new Promise((resolve2) => {
-          this.approveResolve = resolve2;
           const command = params.command || "";
           const reason = params.reason || "";
-          this.approvalBox = blessed.box({
+          const box = blessed.box({
             parent: this.screen,
             top: "center",
             left: "center",
             width: "60%",
-            height: 10,
-            label: " {bold}{yellow-fg}\u26A0\uFE0F \u547D\u4EE4\u9700\u8981\u5BA1\u6279{/yellow-fg}{/bold} ",
+            height: reason ? 10 : 8,
+            label: " \u26A0\uFE0F \u9700\u8981\u5BA1\u6279 ",
             border: { type: "double" },
             tags: true,
-            style: {
-              border: { fg: "yellow" },
-              label: { fg: "yellow" }
-            },
+            style: { border: { fg: "yellow" }, label: { fg: "yellow" } },
             content: [
               "",
-              `  {bold}\u5DE5\u5177:{/bold} ${tool}`,
-              `  {bold}\u547D\u4EE4:{/bold} {red-fg}${command}{/red-fg}`,
-              reason ? `  {bold}\u539F\u56E0:{/bold} ${reason}` : "",
+              `  \u5DE5\u5177: ${tool}`,
+              `  \u547D\u4EE4: {red-fg}${command}{/red-fg}`,
+              reason ? `  \u539F\u56E0: ${reason}` : "",
               "",
-              "  \u6309 {bold}{green-fg}Y{/green-fg}{/bold} \u6267\u884C | \u6309 {bold}{red-fg}N{/red-fg}{/bold} \u62D2\u7EDD"
+              "  \u6309 {bold}Y{/bold} \u6267\u884C | \u6309 {bold}N{/bold} \u62D2\u7EDD"
             ].filter(Boolean).join("\n")
           });
-          this.approvalBox.key(["y", "Y"], () => {
-            this.closeApproval();
-            resolve2(true);
-          });
-          this.approvalBox.key(["n", "N", "escape"], () => {
-            this.closeApproval();
-            resolve2(false);
-          });
-          this.approvalBox.focus();
           this.screen.render();
+          const handler = (key) => {
+            if (key.toLowerCase() === "y") {
+              box.destroy();
+              process.stdin.removeListener("data", handler);
+              this.screen.render();
+              resolve2(true);
+            } else if (key.toLowerCase() === "n" || key === "\x1B") {
+              box.destroy();
+              process.stdin.removeListener("data", handler);
+              this.screen.render();
+              resolve2(false);
+            }
+          };
+          process.stdin.on("data", handler);
         });
-      }
-      closeApproval() {
-        if (this.approvalBox) {
-          this.approvalBox.destroy();
-          this.approvalBox = void 0;
-        }
-        this.focusInput();
       }
       showSessionPicker() {
         const sessions = Session.listSessions();
         if (sessions.length === 0) {
-          this.addMessage({ type: "system", from: "system", content: "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD" });
+          this.addMessage("system", "system", "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD");
           this.renderMessages();
           return;
         }
-        let selectedIndex = 0;
-        const pickerBox = blessed.list({
+        const lines = sessions.map((s, i) => {
+          const date = new Date(s.updatedAt).toLocaleString();
+          return `  ${i + 1}. ${s.name} (${s.messages.length}\u6761, ${date})`;
+        });
+        const box = blessed.box({
           parent: this.screen,
           top: "center",
           left: "center",
           width: "70%",
-          height: Math.min(sessions.length + 5, 20),
-          label: " {bold}\u5386\u53F2\u4F1A\u8BDD{/bold} ",
+          height: sessions.length + 6,
+          label: " \u5386\u53F2\u4F1A\u8BDD (\u8F93\u5165\u7F16\u53F7\u9009\u62E9, q\u53D6\u6D88) ",
           border: { type: "line" },
           tags: true,
-          keys: true,
-          vi: true,
-          style: {
-            border: { fg: "cyan" },
-            label: { fg: "cyan" },
-            selected: { bg: "blue", fg: "white" },
-            item: { fg: "white" }
-          },
-          items: sessions.map((s) => {
-            const date = new Date(s.updatedAt).toLocaleString();
-            return `${s.name} (${s.messages.length} \u6761, ${date})`;
-          })
+          style: { border: { fg: "cyan" }, label: { fg: "cyan" } },
+          content: "\n" + lines.join("\n")
         });
-        pickerBox.on("select", (_item, index) => {
-          const session = sessions[index];
-          if (session) {
-            const loaded = Session.load(session.id);
-            if (loaded) {
-              this.session = loaded;
-              this.messages = loaded.getMessages();
-              this.renderMessages();
-              this.updateStatus();
-            }
-          }
-          pickerBox.destroy();
-          this.focusInput();
-        });
-        pickerBox.key(["escape", "q"], () => {
-          pickerBox.destroy();
-          this.focusInput();
-        });
-        pickerBox.focus();
         this.screen.render();
+        let buffer = "";
+        const handler = (key) => {
+          if (key === "q" || key === "\x1B") {
+            box.destroy();
+            process.stdin.removeListener("data", handler);
+            this.screen.render();
+            return;
+          }
+          if (key >= "0" && key <= "9") {
+            buffer += key;
+          }
+          if (key === "\r" || key === "\n") {
+            const index = parseInt(buffer) - 1;
+            if (index >= 0 && index < sessions.length) {
+              const loaded = Session.load(sessions[index].id);
+              if (loaded) {
+                this.session = loaded;
+                this.messages = loaded.getMessages();
+                this.renderMessages();
+                this.renderStatus();
+              }
+            }
+            box.destroy();
+            process.stdin.removeListener("data", handler);
+            this.screen.render();
+          }
+        };
+        process.stdin.on("data", handler);
+      }
+      cleanup() {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.pause();
+        this.screen.destroy();
       }
       render() {
         this.screen.render();
-      }
-      destroy() {
-        this.screen.destroy();
       }
     };
   }

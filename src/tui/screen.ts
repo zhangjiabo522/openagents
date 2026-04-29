@@ -16,57 +16,53 @@ interface ScreenOptions {
 }
 
 export class Screen {
-  private screen: blessed.Widgets.Screen;
-  private chatBox!: blessed.Widgets.BoxElement;
-  private agentBox!: blessed.Widgets.BoxElement;
-  private inputBox!: blessed.Widgets.TextboxElement;
-  private statusBar!: blessed.Widgets.BoxElement;
-  private approvalBox?: blessed.Widgets.BoxElement;
+  private screen: any;
+  private chatBox: any;
+  private agentBox: any;
+  private statusBar: any;
+  private inputLine: any;
 
   private orchestrator: Orchestrator;
   private session: Session;
   private messages: Message[] = [];
   private agents: AgentState[] = [];
   private isLoading = false;
-  private approveResolve?: (value: boolean) => void;
+  private inputBuffer = '';
+  private cursorPos = 0;
 
   constructor(options: ScreenOptions) {
-    // 创建主屏幕
     this.screen = blessed.screen({
       smartCSR: true,
       fullUnicode: true,
       title: 'OpenAgents v2.0',
       dockBorders: true,
+      input: process.stdin,
+      output: process.stdout,
     });
 
     // 初始化 Orchestrator
     const llm = new LLMClient(options.config.providers);
     this.orchestrator = new Orchestrator(options.config, llm);
-
-    // 设置命令审批
-    this.orchestrator.setApproveCallback((tool, params) => {
-      return this.showApproval(tool, params);
-    });
+    this.orchestrator.setApproveCallback((tool, params) => this.showApproval(tool, params));
 
     // 加载会话
     if (options.resumeSessionId) {
       const loaded = Session.load(options.resumeSessionId);
       this.session = loaded || new Session(options.sessionName);
-      if (loaded) {
-        this.messages = loaded.getMessages();
-      }
+      if (loaded) this.messages = loaded.getMessages();
     } else {
       this.session = new Session(options.sessionName);
     }
 
-    this.setupLayout();
-    this.setupEvents();
+    this.createLayout();
+    this.bindEvents();
     this.renderMessages();
     this.renderAgents();
+    this.renderInputLine();
   }
 
-  private setupLayout(): void {
-    // 顶部状态栏
+  private createLayout(): void {
+    // 状态栏
     this.statusBar = blessed.box({
       parent: this.screen,
       top: 0,
@@ -74,11 +70,8 @@ export class Screen {
       width: '100%',
       height: 1,
       tags: true,
-      style: {
-        fg: 'white',
-        bg: 'blue',
-      },
-      content: ` {bold}OpenAgents v2.0{/bold} │ 会话: ${this.session.getName()} │ 按 {bold}Tab{/bold} 切换面板 │ {bold}Ctrl+C{/bold} 退出 │ {bold}/help{/bold} 帮助`,
+      style: { fg: 'white', bg: 'blue' },
+      content: ' OpenAgents v2.0 | 会话: ' + this.session.getName() + ' | Ctrl+C 退出 | /help 帮助',
     });
 
     // 聊天区域
@@ -88,79 +81,69 @@ export class Screen {
       left: 0,
       width: '75%',
       height: '100%-4',
-      label: ' {bold}Chat{/bold} ',
+      label: ' Chat ',
       border: { type: 'line' },
       tags: true,
       scrollable: true,
       alwaysScroll: true,
-      scrollbar: {
-        style: { bg: 'gray' },
-      },
-      style: {
-        border: { fg: 'cyan' },
-        label: { fg: 'cyan' },
-      },
+      scrollbar: { style: { bg: 'gray' } },
+      style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
     });
 
-    // Agent 状态面板
+    // Agent 面板
     this.agentBox = blessed.box({
       parent: this.screen,
       top: 1,
       left: '75%',
       width: '25%',
       height: '100%-4',
-      label: ' {bold}Agents{/bold} ',
+      label: ' Agents ',
       border: { type: 'line' },
       tags: true,
-      scrollable: true,
-      style: {
-        border: { fg: 'gray' },
-        label: { fg: 'cyan' },
-      },
+      style: { border: { fg: 'gray' }, label: { fg: 'cyan' } },
     });
 
-    // 底部输入框
-    this.inputBox = blessed.textbox({
+    // 输入行 - 使用 box 而不是 textbox，手动处理输入
+    this.inputLine = blessed.box({
       parent: this.screen,
       bottom: 0,
       left: 0,
       width: '100%',
       height: 3,
-      label: ' {bold}Input{/bold} ',
+      label: ' Input ',
       border: { type: 'line' },
       tags: true,
-      style: {
-        border: { fg: 'cyan' },
-        label: { fg: 'cyan' },
-      },
+      style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
     });
   }
 
-  private setupEvents(): void {
-    // 监听 orchestrator 响应
+  private bindEvents(): void {
+    // 直接监听 stdin 输入
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+    process.stdin.setEncoding('utf-8');
+
+    process.stdin.on('data', (key: string) => {
+      this.handleKeyPress(key);
+    });
+
+    // 监听 orchestrator
     this.orchestrator.on('response', (response: string) => {
-      this.addMessage({
-        type: 'agent_message',
-        from: 'orchestrator',
-        content: response,
-      });
+      this.addMessage('agent_message', 'orchestrator', response);
       this.isLoading = false;
-      this.updateStatus();
       this.renderMessages();
       this.renderAgents();
-      this.focusInput();
+      this.renderStatus();
+      this.renderInputLine();
     });
 
     this.orchestrator.on('error', (error: Error) => {
-      this.addMessage({
-        type: 'system',
-        from: 'system',
-        content: `错误: ${error.message}`,
-      });
+      this.addMessage('system', 'system', `错误: ${error.message}`);
       this.isLoading = false;
-      this.updateStatus();
       this.renderMessages();
-      this.focusInput();
+      this.renderInputLine();
     });
 
     this.orchestrator.on('status_change', () => {
@@ -168,92 +151,80 @@ export class Screen {
       this.renderAgents();
     });
 
-    // 快捷键
-    this.screen.key(['C-c'], () => {
-      this.session.save();
-      process.exit(0);
-    });
-
-    this.screen.key(['tab'], () => {
-      if (this.screen.focused === this.chatBox) {
-        this.screen.focusGrabbed = false;
-        this.agentBox.focus();
-      } else {
-        this.screen.focusGrabbed = false;
-        this.chatBox.focus();
-      }
-    });
-
-    // 输入处理
-    this.inputBox.on('submit', (value: string) => {
-      this.handleInput(value);
-    });
-
     // 定时刷新 agent 状态
     setInterval(() => {
-      if (this.orchestrator) {
-        const newAgents = this.orchestrator.getState().agents;
-        if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
-          this.agents = newAgents;
-          this.renderAgents();
-        }
+      const newAgents = this.orchestrator.getState().agents;
+      if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
+        this.agents = newAgents;
+        this.renderAgents();
       }
-    }, 2000);
-
-    // 初始聚焦
-    this.focusInput();
+    }, 3000);
   }
 
-  private async handleInput(input: string): void {
-    this.inputBox.clearValue();
-    this.screen.render();
+  private handleKeyPress(key: string): void {
+    // Ctrl+C
+    if (key === '\x03') {
+      this.cleanup();
+      process.exit(0);
+    }
 
-    if (!input.trim()) {
-      this.focusInput();
+    // Enter
+    if (key === '\r' || key === '\n') {
+      if (this.inputBuffer.trim() && !this.isLoading) {
+        this.submitInput(this.inputBuffer);
+        this.inputBuffer = '';
+        this.cursorPos = 0;
+      }
       return;
     }
 
-    if (this.isLoading) {
-      this.focusInput();
+    // Backspace
+    if (key === '\x7f' || key === '\b') {
+      if (this.cursorPos > 0) {
+        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
+        this.cursorPos--;
+        this.renderInputLine();
+      }
       return;
     }
 
+    // 忽略其他控制字符
+    if (key.length === 1 && key.charCodeAt(0) < 32) {
+      return;
+    }
+
+    // 普通字符
+    if (key.length >= 1 && key.charCodeAt(0) >= 32) {
+      this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key + this.inputBuffer.slice(this.cursorPos);
+      this.cursorPos += key.length;
+      this.renderInputLine();
+    }
+  }
+
+  private async submitInput(input: string): Promise<void> {
     // 处理命令
     if (input.startsWith('/')) {
       this.handleCommand(input);
-      this.focusInput();
       return;
     }
 
     this.isLoading = true;
-    this.updateStatus();
+    this.renderStatus();
+    this.renderInputLine();
 
-    // 添加用户消息
-    this.addMessage({
-      type: 'user_input',
-      from: 'user',
-      content: input,
-    });
+    this.addMessage('user_input', 'user', input);
     this.renderMessages();
 
     try {
       await this.orchestrator.processUserInput(input);
     } catch (error) {
-      this.addMessage({
-        type: 'system',
-        from: 'system',
-        content: `错误: ${(error as Error).message}`,
-      });
+      this.addMessage('system', 'system', `错误: ${(error as Error).message}`);
       this.isLoading = false;
     }
 
-    if (true /* auto_save */) {
-      this.session.save();
-    }
-
-    this.updateStatus();
-    this.renderMessages();
-    this.focusInput();
+    this.session.save();
+    this.renderStatus();
+    this.renderInputLine();
   }
 
   private handleCommand(input: string): void {
@@ -262,7 +233,7 @@ export class Screen {
     switch (cmd) {
       case 'quit':
       case 'exit':
-        this.session.save();
+        this.cleanup();
         process.exit(0);
         break;
       case 'clear':
@@ -277,54 +248,48 @@ export class Screen {
         break;
       case 'save':
         this.session.save();
-        this.addMessage({ type: 'system', from: 'system', content: '会话已保存' });
+        this.addMessage('system', 'system', '会话已保存');
         this.renderMessages();
-        break;
-      case 'agents':
-        this.agentBox.focus();
         break;
       case 'sessions':
         this.showSessionPicker();
         break;
       case 'help':
-        this.addMessage({
-          type: 'system',
-          from: 'system',
-          content: `可用命令:
-/quit, /exit    - 退出程序
-/clear          - 清屏
-/reset          - 重置所有 Agent
-/save           - 保存会话
-/sessions       - 选择历史会话
-/agents         - 聚焦 Agent 面板
-/help           - 显示帮助信息`,
-        });
+        this.addMessage('system', 'system', `可用命令:
+/quit, /exit  - 退出
+/clear        - 清屏
+/reset        - 重置 Agent
+/save         - 保存会话
+/sessions     - 历史会话
+/help         - 帮助`);
         this.renderMessages();
         break;
       default:
-        this.addMessage({
-          type: 'system',
-          from: 'system',
-          content: `未知命令: ${cmd}。输入 /help 查看帮助。`,
-        });
+        this.addMessage('system', 'system', `未知命令: ${cmd}`);
         this.renderMessages();
     }
+
+    this.inputBuffer = '';
+    this.cursorPos = 0;
+    this.renderInputLine();
   }
 
-  private addMessage(msg: Omit<Message, 'id' | 'timestamp'>): void {
-    const fullMsg: Message = {
-      ...msg,
+  private addMessage(type: string, from: string, content: string): void {
+    const msg: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: type as Message['type'],
+      from,
+      content,
       timestamp: new Date(),
     };
-    this.messages.push(fullMsg);
-    this.session.addMessage(fullMsg);
+    this.messages.push(msg);
+    this.session.addMessage(msg);
   }
 
   private renderMessages(): void {
     const lines: string[] = [];
 
-    for (const msg of this.messages.slice(-100)) {
+    for (const msg of this.messages.slice(-80)) {
       const time = msg.timestamp.toLocaleTimeString();
       let prefix: string;
       let color: string;
@@ -339,7 +304,7 @@ export class Screen {
           color = 'yellow';
           break;
         case 'system':
-          prefix = 'System';
+          prefix = '!';
           color = 'magenta';
           break;
         default:
@@ -347,10 +312,8 @@ export class Screen {
           color = 'white';
       }
 
-      // 处理多行内容
-      const contentLines = msg.content.split('\n');
       lines.push(`{${color}-fg}{bold}[${prefix}]{/bold}{/${color}-fg} {gray-fg}${time}{/gray-fg}`);
-      for (const line of contentLines) {
+      for (const line of msg.content.split('\n')) {
         lines.push(`  ${line}`);
       }
       lines.push('');
@@ -365,170 +328,161 @@ export class Screen {
     const lines: string[] = [];
 
     for (const agent of this.agents) {
-      let statusIcon: string;
-      let statusColor: string;
+      let icon: string;
+      let color: string;
 
       switch (agent.status) {
-        case 'idle':
-          statusIcon = '○';
-          statusColor = 'gray';
-          break;
-        case 'working':
-          statusIcon = '●';
-          statusColor = 'green';
-          break;
-        case 'thinking':
-          statusIcon = '◐';
-          statusColor = 'yellow';
-          break;
-        case 'error':
-          statusIcon = '✗';
-          statusColor = 'red';
-          break;
-        default:
-          statusIcon = '?';
-          statusColor = 'white';
+        case 'idle': icon = '○'; color = 'gray'; break;
+        case 'working': icon = '●'; color = 'green'; break;
+        case 'thinking': icon = '◐'; color = 'yellow'; break;
+        case 'error': icon = '✗'; color = 'red'; break;
+        default: icon = '?'; color = 'white';
       }
 
-      lines.push(`{${statusColor}-fg}${statusIcon}{/${statusColor}-fg} {bold}${agent.name}{/bold}`);
-      lines.push(`  {gray-fg}${agent.type} | Token: ${agent.tokenUsage}{/gray-fg}`);
+      lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${agent.name}{/bold}`);
+      lines.push(`  {gray-fg}${agent.type} | ${agent.tokenUsage}tk{/gray-fg}`);
       if (agent.currentTask) {
-        lines.push(`  {yellow-fg}${agent.currentTask.description.slice(0, 25)}...{/yellow-fg}`);
+        lines.push(`  {yellow-fg}▶ ${agent.currentTask.description.slice(0, 20)}...{/yellow-fg}`);
       }
       lines.push('');
+    }
+
+    if (lines.length === 0) {
+      lines.push('{gray-fg}等待启动...{/gray-fg}');
     }
 
     this.agentBox.setContent(lines.join('\n'));
     this.screen.render();
   }
 
-  private updateStatus(): void {
-    const status = this.isLoading ? '{yellow-fg}处理中...{/yellow-fg}' : '{green-fg}就绪{/green-fg}';
-    this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} │ 会话: ${this.session.getName()} │ 状态: ${status} │ 消息: ${this.messages.length} │ {bold}Tab{/bold} 切换 │ {bold}Ctrl+C{/bold} 退出`);
+  private renderStatus(): void {
+    const status = this.isLoading ? '{yellow-fg}处理中{/yellow-fg}' : '{green-fg}就绪{/green-fg}';
+    this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} │ ${this.session.getName()} │ ${status} │ ${this.messages.length}条消息 │ /help`);
     this.screen.render();
   }
 
-  private focusInput(): void {
-    this.inputBox.focus();
+  private renderInputLine(): void {
+    const prefix = this.isLoading ? '⟳ ' : '> ';
+    const display = prefix + this.inputBuffer + '█';
+    this.inputLine.setContent(display);
     this.screen.render();
   }
 
   private showApproval(tool: string, params: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
-      this.approveResolve = resolve;
-
       const command = params.command || '';
       const reason = params.reason || '';
 
-      this.approvalBox = blessed.box({
+      const box = blessed.box({
         parent: this.screen,
         top: 'center',
         left: 'center',
         width: '60%',
-        height: 10,
-        label: ' {bold}{yellow-fg}⚠️ 命令需要审批{/yellow-fg}{/bold} ',
+        height: reason ? 10 : 8,
+        label: ' ⚠️ 需要审批 ',
         border: { type: 'double' },
         tags: true,
-        style: {
-          border: { fg: 'yellow' },
-          label: { fg: 'yellow' },
-        },
+        style: { border: { fg: 'yellow' }, label: { fg: 'yellow' } },
         content: [
           '',
-          `  {bold}工具:{/bold} ${tool}`,
-          `  {bold}命令:{/bold} {red-fg}${command}{/red-fg}`,
-          reason ? `  {bold}原因:{/bold} ${reason}` : '',
+          `  工具: ${tool}`,
+          `  命令: {red-fg}${command}{/red-fg}`,
+          reason ? `  原因: ${reason}` : '',
           '',
-          '  按 {bold}{green-fg}Y{/green-fg}{/bold} 执行 | 按 {bold}{red-fg}N{/red-fg}{/bold} 拒绝',
+          '  按 {bold}Y{/bold} 执行 | 按 {bold}N{/bold} 拒绝',
         ].filter(Boolean).join('\n'),
       });
 
-      this.approvalBox.key(['y', 'Y'], () => {
-        this.closeApproval();
-        resolve(true);
-      });
-
-      this.approvalBox.key(['n', 'N', 'escape'], () => {
-        this.closeApproval();
-        resolve(false);
-      });
-
-      this.approvalBox.focus();
       this.screen.render();
-    });
-  }
 
-  private closeApproval(): void {
-    if (this.approvalBox) {
-      this.approvalBox.destroy();
-      this.approvalBox = undefined;
-    }
-    this.focusInput();
+      const handler = (key: string) => {
+        if (key.toLowerCase() === 'y') {
+          box.destroy();
+          process.stdin.removeListener('data', handler);
+          this.screen.render();
+          resolve(true);
+        } else if (key.toLowerCase() === 'n' || key === '\x1b') {
+          box.destroy();
+          process.stdin.removeListener('data', handler);
+          this.screen.render();
+          resolve(false);
+        }
+      };
+
+      process.stdin.on('data', handler);
+    });
   }
 
   private showSessionPicker(): void {
     const sessions = Session.listSessions();
-
     if (sessions.length === 0) {
-      this.addMessage({ type: 'system', from: 'system', content: '没有保存的会话' });
+      this.addMessage('system', 'system', '没有保存的会话');
       this.renderMessages();
       return;
     }
 
-    let selectedIndex = 0;
+    const lines = sessions.map((s, i) => {
+      const date = new Date(s.updatedAt).toLocaleString();
+      return `  ${i + 1}. ${s.name} (${s.messages.length}条, ${date})`;
+    });
 
-    const pickerBox = blessed.list({
+    const box = blessed.box({
       parent: this.screen,
       top: 'center',
       left: 'center',
       width: '70%',
-      height: Math.min(sessions.length + 5, 20),
-      label: ' {bold}历史会话{/bold} ',
+      height: sessions.length + 6,
+      label: ' 历史会话 (输入编号选择, q取消) ',
       border: { type: 'line' },
       tags: true,
-      keys: true,
-      vi: true,
-      style: {
-        border: { fg: 'cyan' },
-        label: { fg: 'cyan' },
-        selected: { bg: 'blue', fg: 'white' },
-        item: { fg: 'white' },
-      },
-      items: sessions.map(s => {
-        const date = new Date(s.updatedAt).toLocaleString();
-        return `${s.name} (${s.messages.length} 条, ${date})`;
-      }),
+      style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
+      content: '\n' + lines.join('\n'),
     });
 
-    pickerBox.on('select', (_item, index) => {
-      const session = sessions[index];
-      if (session) {
-        const loaded = Session.load(session.id);
-        if (loaded) {
-          this.session = loaded;
-          this.messages = loaded.getMessages();
-          this.renderMessages();
-          this.updateStatus();
-        }
-      }
-      pickerBox.destroy();
-      this.focusInput();
-    });
-
-    pickerBox.key(['escape', 'q'], () => {
-      pickerBox.destroy();
-      this.focusInput();
-    });
-
-    pickerBox.focus();
     this.screen.render();
+
+    let buffer = '';
+    const handler = (key: string) => {
+      if (key === 'q' || key === '\x1b') {
+        box.destroy();
+        process.stdin.removeListener('data', handler);
+        this.screen.render();
+        return;
+      }
+
+      if (key >= '0' && key <= '9') {
+        buffer += key;
+      }
+
+      if (key === '\r' || key === '\n') {
+        const index = parseInt(buffer) - 1;
+        if (index >= 0 && index < sessions.length) {
+          const loaded = Session.load(sessions[index].id);
+          if (loaded) {
+            this.session = loaded;
+            this.messages = loaded.getMessages();
+            this.renderMessages();
+            this.renderStatus();
+          }
+        }
+        box.destroy();
+        process.stdin.removeListener('data', handler);
+        this.screen.render();
+      }
+    };
+
+    process.stdin.on('data', handler);
+  }
+
+  private cleanup(): void {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    process.stdin.pause();
+    this.screen.destroy();
   }
 
   render(): void {
     this.screen.render();
-  }
-
-  destroy(): void {
-    this.screen.destroy();
   }
 }
