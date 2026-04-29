@@ -5,6 +5,8 @@
 
 set -e
 
+REPO_URL="https://github.com/zhangjiabo522/openagents.git"
+
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║           Welcome to OpenAgents Installer                ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
@@ -34,10 +36,19 @@ fi
 
 echo "✓ npm $(npm -v) 已安装"
 
+# 检查 git
+if ! command -v git &> /dev/null; then
+    echo "❌ git 未安装。"
+    echo "请先安装 git: apt install git / yum install git"
+    exit 1
+fi
+
+echo "✓ git $(git --version | cut -d' ' -f3) 已安装"
+
 # 安装 openagents
 echo ""
-echo "📦 正在安装 openagents..."
-npm install -g openagents
+echo "📦 正在从 GitHub 安装 openagents..."
+npm install -g "$REPO_URL"
 
 # 验证安装
 if command -v openagents &> /dev/null; then

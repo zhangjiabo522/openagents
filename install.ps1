@@ -1,6 +1,8 @@
 # OpenAgents 安装脚本 (Windows PowerShell)
 # 使用方法: irm https://raw.githubusercontent.com/zhangjiabo522/openagents/main/install.ps1 | iex
 
+$REPO_URL = "https://github.com/zhangjiabo522/openagents.git"
+
 Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║           Welcome to OpenAgents Installer                ║" -ForegroundColor Cyan
 Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
@@ -32,10 +34,20 @@ if (-not $npmPath) {
 
 Write-Host "✓ npm $(npm -v) 已安装" -ForegroundColor Green
 
+# 检查 git
+$gitPath = Get-Command git -ErrorAction SilentlyContinue
+if (-not $gitPath) {
+    Write-Host "❌ git 未安装。" -ForegroundColor Red
+    Write-Host "请先安装 git: https://git-scm.com/"
+    exit 1
+}
+
+Write-Host "✓ git $(git --version | Select-String -Pattern '[\d.]+' | ForEach-Object { $_.Matches.Value }) 已安装" -ForegroundColor Green
+
 # 安装 openagents
 Write-Host ""
-Write-Host "📦 正在安装 openagents..." -ForegroundColor Yellow
-npm install -g openagents
+Write-Host "📦 正在从 GitHub 安装 openagents..." -ForegroundColor Yellow
+npm install -g $REPO_URL
 
 # 验证安装
 $openagentsPath = Get-Command openagents -ErrorAction SilentlyContinue
