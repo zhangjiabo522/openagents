@@ -38,7 +38,6 @@ async function startApp(sessionName?: string, resumeSessionId?: string) {
       return;
     }
 
-    // 使用 blessed 全屏渲染（不闪烁）
     const { Screen } = await import('./tui/screen.js');
     new Screen({ config, sessionName, resumeSessionId });
   } catch (error) {
