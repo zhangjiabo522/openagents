@@ -1528,7 +1528,7 @@ var init_screen = __esm({
       chatBox;
       agentBox;
       statusBar;
-      inputLine;
+      inputBox;
       orchestrator;
       session;
       messages = [];
@@ -1537,14 +1537,20 @@ var init_screen = __esm({
       inputBuffer = "";
       cursorPos = 0;
       agentPanelWidth = 22;
+      // 弹窗模式：null 表示无弹窗
+      modal = null;
+      modalBox = null;
+      modalResolve;
+      modalBuffer = "";
       constructor(options) {
         this.screen = blessed.screen({
           smartCSR: true,
           fullUnicode: true,
-          title: "OpenAgents v2.3",
+          title: "OpenAgents v2.4",
           dockBorders: false,
           input: process.stdin,
-          output: process.stdout
+          output: process.stdout,
+          terminal: "xterm-256color"
         });
         const llm = new LLMClient(options.config.providers);
         this.orchestrator = new Orchestrator(options.config, llm);
@@ -1557,20 +1563,23 @@ var init_screen = __esm({
           this.session = new Session(options.sessionName);
         }
         this.buildLayout();
-        this.bindEvents();
+        this.bindKeys();
+        this.bindOrchestrator();
         this.renderAll();
       }
+      // ─── 布局 ───────────────────────────────────────────
       get cols() {
-        return this.screen.cols || process.stdout.columns || 120;
+        return this.screen.cols || 120;
       }
       get rows() {
-        return this.screen.rows || process.stdout.rows || 30;
+        return this.screen.rows || 30;
       }
       buildLayout() {
         const w = this.cols;
         const h = this.rows;
         const agW = this.agentPanelWidth;
-        const chatW = w - agW - 1;
+        const chatW = w - agW;
+        const chatH = h - 4;
         this.statusBar = blessed.box({
           parent: this.screen,
           top: 0,
@@ -1580,7 +1589,6 @@ var init_screen = __esm({
           tags: true,
           style: { fg: "white", bg: "blue" }
         });
-        const chatH = h - 4;
         this.chatBox = blessed.box({
           parent: this.screen,
           top: 1,
@@ -1606,7 +1614,7 @@ var init_screen = __esm({
           tags: true,
           style: { border: { fg: "gray" }, label: { fg: "cyan" } }
         });
-        this.inputLine = blessed.box({
+        this.inputBox = blessed.box({
           parent: this.screen,
           top: h - 3,
           left: 0,
@@ -1618,46 +1626,11 @@ var init_screen = __esm({
           style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
         });
       }
-      bindEvents() {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-        }
-        process.stdin.resume();
-        process.stdin.setEncoding("utf-8");
-        process.stdin.on("data", (key) => {
-          this.handleKeyPress(key);
-        });
-        this.orchestrator.on("response", (response) => {
-          this.addMessage("agent_message", "orchestrator", response);
-          this.isLoading = false;
-          this.renderAll();
-        });
-        this.orchestrator.on("error", (error) => {
-          this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
-          this.isLoading = false;
-          this.renderAll();
-        });
-        this.orchestrator.on("status_change", () => {
-          this.agents = this.orchestrator.getState().agents;
-          this.renderAgents();
-          this.renderStatus();
-        });
-        setInterval(() => {
-          const newAgents = this.orchestrator.getState().agents;
-          if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
-            this.agents = newAgents;
-            this.renderAgents();
-          }
-        }, 2e3);
-        this.screen.on("resize", () => {
-          this.rebuildLayout();
-        });
-      }
-      rebuildLayout() {
+      relayout() {
         const w = this.cols;
         const h = this.rows;
         const agW = this.agentPanelWidth;
-        const chatW = w - agW - 1;
+        const chatW = w - agW;
         const chatH = h - 4;
         this.statusBar.width = w;
         this.chatBox.width = chatW;
@@ -1665,31 +1638,57 @@ var init_screen = __esm({
         this.agentBox.left = chatW;
         this.agentBox.width = agW;
         this.agentBox.height = chatH;
-        this.inputLine.top = h - 3;
-        this.inputLine.width = w;
-        this.renderAll();
+        this.inputBox.top = h - 3;
+        this.inputBox.width = w;
+        this.screen.render();
       }
-      handleKeyPress(key) {
-        if (key === "") {
+      // ─── 按键处理 (只用 blessed 的 key 事件) ───────────
+      bindKeys() {
+        this.screen.on("keypress", (_ch, key) => {
+          if (!key) return;
+          this.handleKey(key);
+        });
+        this.screen.on("resize", () => this.relayout());
+        setInterval(() => {
+          const fresh = this.orchestrator.getState().agents;
+          if (JSON.stringify(fresh) !== JSON.stringify(this.agents)) {
+            this.agents = fresh;
+            this.renderAgents();
+          }
+        }, 2e3);
+      }
+      handleKey(key) {
+        const name = key.name || "";
+        const ctrl = key.ctrl || false;
+        if (name === "c" && ctrl) {
           this.cleanup();
           process.exit(0);
         }
-        if (key === "\x1B" && this.isLoading) {
+        if (this.modal === "approval") {
+          this.handleApprovalKey(name);
+          return;
+        }
+        if (this.modal === "session") {
+          this.handleSessionKey(name, key.ch);
+          return;
+        }
+        if (name === "escape" && this.isLoading) {
           this.orchestrator.abort();
           this.isLoading = false;
           this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
           this.renderAll();
           return;
         }
-        if (key === "\r" || key === "\n") {
+        if (name === "enter") {
           if (this.inputBuffer.trim() && !this.isLoading) {
-            this.submitInput(this.inputBuffer);
+            const text = this.inputBuffer;
             this.inputBuffer = "";
             this.cursorPos = 0;
+            this.submitInput(text);
           }
           return;
         }
-        if (key === "\x7F" || key === "\b") {
+        if (name === "backspace") {
           if (this.cursorPos > 0) {
             this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
             this.cursorPos--;
@@ -1697,23 +1696,63 @@ var init_screen = __esm({
           }
           return;
         }
-        if (key.length === 1 && key.charCodeAt(0) < 32) return;
-        if (key.length >= 1 && key.charCodeAt(0) >= 32) {
-          this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key + this.inputBuffer.slice(this.cursorPos);
-          this.cursorPos += key.length;
-          this.renderInput();
+        if (!key.ch || key.ch.length === 0) return;
+        if (key.ch.charCodeAt(0) < 32) return;
+        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key.ch + this.inputBuffer.slice(this.cursorPos);
+        this.cursorPos += key.ch.length;
+        this.renderInput();
+      }
+      // ─── 弹窗按键 ─────────────────────────────────────
+      handleApprovalKey(name) {
+        if (!this.modalResolve) return;
+        if (name === "y") {
+          this.closeModal();
+          this.modalResolve(true);
+        } else if (name === "n" || name === "escape") {
+          this.closeModal();
+          this.modalResolve(false);
         }
       }
+      handleSessionKey(name, ch) {
+        if (name === "escape" || ch === "q") {
+          this.closeModal();
+          return;
+        }
+        if (ch >= "0" && ch <= "9") {
+          this.modalBuffer += ch;
+        }
+        if (name === "enter") {
+          const sessions = Session.listSessions();
+          const idx = parseInt(this.modalBuffer) - 1;
+          if (idx >= 0 && idx < sessions.length) {
+            const loaded = Session.load(sessions[idx].id);
+            if (loaded) {
+              this.session = loaded;
+              this.messages = loaded.getMessages();
+              this.renderAll();
+            }
+          }
+          this.closeModal();
+        }
+      }
+      closeModal() {
+        if (this.modalBox) {
+          this.modalBox.destroy();
+          this.modalBox = null;
+        }
+        this.modal = null;
+        this.modalBuffer = "";
+        this.screen.render();
+      }
+      // ─── 消息/命令处理 ─────────────────────────────────
       async submitInput(input) {
         if (input.startsWith("/")) {
           this.handleCommand(input);
           return;
         }
         this.isLoading = true;
-        this.renderStatus();
-        this.renderInput();
         this.addMessage("user_input", "user", input);
-        this.renderMessages();
+        this.renderAll();
         try {
           await this.orchestrator.processUserInput(input);
         } catch (error) {
@@ -1736,42 +1775,37 @@ var init_screen = __esm({
             break;
           case "clear":
             this.messages = [];
-            this.renderMessages();
             break;
           case "reset":
             this.orchestrator.resetAllAgents();
             this.messages = [];
-            this.renderMessages();
-            this.renderAgents();
             break;
           case "save":
             this.session.save();
             this.addMessage("system", "system", "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
-            this.renderMessages();
             break;
           case "sessions":
             this.showSessionPicker();
-            break;
+            return;
+          // 弹窗模式，不 reset inputBuffer
           case "help":
             this.addMessage("system", "system", [
-              "/quit, /exit  - \u9000\u51FA",
-              "/clear        - \u6E05\u5C4F",
-              "/reset        - \u91CD\u7F6E Agent",
-              "/save         - \u4FDD\u5B58\u4F1A\u8BDD",
-              "/sessions     - \u5386\u53F2\u4F1A\u8BDD",
-              "/help         - \u5E2E\u52A9",
+              "/quit, /exit  \u9000\u51FA",
+              "/clear        \u6E05\u5C4F",
+              "/reset        \u91CD\u7F6E",
+              "/save         \u4FDD\u5B58",
+              "/sessions     \u5386\u53F2\u4F1A\u8BDD",
+              "/help         \u5E2E\u52A9",
               "",
-              "ESC - \u53D6\u6D88\u5F53\u524D\u56DE\u590D  Ctrl+C - \u9000\u51FA"
+              "ESC \u53D6\u6D88\u56DE\u590D | Ctrl+C \u9000\u51FA"
             ].join("\n"));
-            this.renderMessages();
             break;
           default:
             this.addMessage("system", "system", `\u672A\u77E5\u547D\u4EE4: ${cmd}`);
-            this.renderMessages();
         }
         this.inputBuffer = "";
         this.cursorPos = 0;
-        this.renderInput();
+        this.renderAll();
       }
       addMessage(type, from, content) {
         const msg = {
@@ -1784,6 +1818,24 @@ var init_screen = __esm({
         this.messages.push(msg);
         this.session.addMessage(msg);
       }
+      // ─── Orchestrator 事件 ─────────────────────────────
+      bindOrchestrator() {
+        this.orchestrator.on("response", (text) => {
+          this.addMessage("agent_message", "orchestrator", text);
+          this.isLoading = false;
+          this.renderAll();
+        });
+        this.orchestrator.on("error", (err) => {
+          this.addMessage("system", "system", `\u9519\u8BEF: ${err.message}`);
+          this.isLoading = false;
+          this.renderAll();
+        });
+        this.orchestrator.on("status_change", () => {
+          this.agents = this.orchestrator.getState().agents;
+          this.renderAgents();
+          this.renderStatus();
+        });
+      }
       // ─── 渲染 ───────────────────────────────────────────
       renderAll() {
         this.renderStatus();
@@ -1794,37 +1846,34 @@ var init_screen = __esm({
       renderStatus() {
         const tag = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
         this.statusBar.setContent(
-          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 ESC\u53D6\u6D88 \u2502 /help`
+          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 /help`
         );
         this.screen.render();
       }
       renderMessages() {
         const lines = [];
         for (const msg of this.messages.slice(-80)) {
-          const time = msg.timestamp.toLocaleTimeString();
-          let prefix;
-          let color;
+          const t = msg.timestamp.toLocaleTimeString();
+          let pre, clr;
           switch (msg.type) {
             case "user_input":
-              prefix = "You";
-              color = "green";
+              pre = "You";
+              clr = "green";
               break;
             case "agent_message":
-              prefix = "Agent";
-              color = "yellow";
+              pre = "Agent";
+              clr = "yellow";
               break;
             case "system":
-              prefix = "!";
-              color = "magenta";
+              pre = "!";
+              clr = "magenta";
               break;
             default:
-              prefix = msg.from;
-              color = "white";
+              pre = msg.from;
+              clr = "white";
           }
-          lines.push(`{${color}-fg}{bold}[${prefix}]{/bold}{/${color}-fg} {gray-fg}${time}{/gray-fg}`);
-          for (const line of msg.content.split("\n")) {
-            lines.push(`  ${line}`);
-          }
+          lines.push(`{${clr}-fg}{bold}[${pre}]{/bold}{/${clr}-fg} {gray-fg}${t}{/gray-fg}`);
+          for (const l of msg.content.split("\n")) lines.push(`  ${l}`);
           lines.push("");
         }
         this.chatBox.setContent(lines.join("\n"));
@@ -1833,62 +1882,56 @@ var init_screen = __esm({
       }
       renderAgents() {
         const lines = [];
-        for (const agent of this.agents) {
-          let icon;
-          let color;
-          switch (agent.status) {
+        for (const a of this.agents) {
+          let icon, clr;
+          switch (a.status) {
             case "idle":
               icon = "\u25CB";
-              color = "gray";
+              clr = "gray";
               break;
             case "working":
               icon = "\u25CF";
-              color = "green";
+              clr = "green";
               break;
             case "thinking":
               icon = "\u25D0";
-              color = "yellow";
+              clr = "yellow";
               break;
             case "error":
               icon = "\u2717";
-              color = "red";
+              clr = "red";
               break;
             default:
               icon = "?";
-              color = "white";
+              clr = "white";
           }
-          const name = (agent.name || agent.type).slice(0, 10);
-          const tk = agent.tokenUsage > 0 ? ` ${agent.tokenUsage}tk` : "";
-          lines.push(`{${color}-fg}${icon}{/${color}-fg} ${name}${tk}`);
-          if (agent.currentTask) {
-            const desc = agent.currentTask.description.slice(0, 14);
-            lines.push(`  {yellow-fg}${desc}{/yellow-fg}`);
+          const name = (a.name || a.type).slice(0, 10);
+          const tk = a.tokenUsage > 0 ? ` ${a.tokenUsage}tk` : "";
+          lines.push(`{${clr}-fg}${icon}{/${clr}-fg} ${name}${tk}`);
+          if (a.currentTask) {
+            lines.push(`  {yellow-fg}${a.currentTask.description.slice(0, 14)}{/yellow-fg}`);
           }
         }
-        if (lines.length === 0) {
-          lines.push("{gray-fg}\u7B49\u5F85\u542F\u52A8...{/gray-fg}");
-        }
+        if (lines.length === 0) lines.push("{gray-fg}\u7B49\u5F85\u542F\u52A8...{/gray-fg}");
         this.agentBox.setContent(lines.join("\n"));
         this.screen.render();
       }
       renderInput() {
-        const prefix = this.isLoading ? "\u27F3 " : "> ";
-        this.inputLine.setContent(prefix + this.inputBuffer + "\u2588");
+        const pre = this.isLoading ? "\u27F3 " : "> ";
+        this.inputBox.setContent(pre + this.inputBuffer + "\u2588");
         this.screen.render();
       }
       // ─── 弹窗 ───────────────────────────────────────────
       showApproval(tool, params) {
         return new Promise((resolve2) => {
-          const command = params.command || "";
+          const cmd = params.command || "";
           const reason = params.reason || "";
-          const lines = [
-            "",
-            `  \u5DE5\u5177: ${tool}`,
-            `  \u547D\u4EE4: {red-fg}${command}{/red-fg}`
-          ];
+          const lines = ["", `  \u5DE5\u5177: ${tool}`, `  \u547D\u4EE4: {red-fg}${cmd}{/red-fg}`];
           if (reason) lines.push(`  \u539F\u56E0: ${reason}`);
           lines.push("", "  \u6309 {bold}Y{/bold} \u6267\u884C | \u6309 {bold}N{/bold} \u62D2\u7EDD");
-          const box = blessed.box({
+          this.modal = "approval";
+          this.modalResolve = resolve2;
+          this.modalBox = blessed.box({
             parent: this.screen,
             top: "center",
             left: "center",
@@ -1901,20 +1944,6 @@ var init_screen = __esm({
             content: lines.join("\n")
           });
           this.screen.render();
-          const handler = (key) => {
-            if (key.toLowerCase() === "y") {
-              box.destroy();
-              process.stdin.removeListener("data", handler);
-              this.screen.render();
-              resolve2(true);
-            } else if (key.toLowerCase() === "n" || key === "\x1B") {
-              box.destroy();
-              process.stdin.removeListener("data", handler);
-              this.screen.render();
-              resolve2(false);
-            }
-          };
-          process.stdin.on("data", handler);
         });
       }
       showSessionPicker() {
@@ -1925,10 +1954,12 @@ var init_screen = __esm({
           return;
         }
         const lines = sessions.map((s, i) => {
-          const date = new Date(s.updatedAt).toLocaleString();
-          return `  ${i + 1}. ${s.name} (${s.messages.length}\u6761, ${date})`;
+          const d = new Date(s.updatedAt).toLocaleString();
+          return `  ${i + 1}. ${s.name} (${s.messages.length}\u6761, ${d})`;
         });
-        const box = blessed.box({
+        this.modal = "session";
+        this.modalBuffer = "";
+        this.modalBox = blessed.box({
           parent: this.screen,
           top: "center",
           left: "center",
@@ -1941,37 +1972,8 @@ var init_screen = __esm({
           content: "\n" + lines.join("\n")
         });
         this.screen.render();
-        let buffer = "";
-        const handler = (key) => {
-          if (key === "q" || key === "\x1B") {
-            box.destroy();
-            process.stdin.removeListener("data", handler);
-            this.screen.render();
-            return;
-          }
-          if (key >= "0" && key <= "9") buffer += key;
-          if (key === "\r" || key === "\n") {
-            const idx = parseInt(buffer) - 1;
-            if (idx >= 0 && idx < sessions.length) {
-              const loaded = Session.load(sessions[idx].id);
-              if (loaded) {
-                this.session = loaded;
-                this.messages = loaded.getMessages();
-                this.renderAll();
-              }
-            }
-            box.destroy();
-            process.stdin.removeListener("data", handler);
-            this.screen.render();
-          }
-        };
-        process.stdin.on("data", handler);
       }
       cleanup() {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-        }
-        process.stdin.pause();
         this.screen.destroy();
       }
       render() {
@@ -2341,7 +2343,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.3.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.4.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
