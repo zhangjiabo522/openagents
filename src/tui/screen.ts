@@ -30,19 +30,18 @@ export class Screen {
   private inputBuffer = '';
   private cursorPos = 0;
   private agentPanelWidth = 22;
+  private scrollOffset = 0;
 
-  // 弹窗模式：null 表示无弹窗
   private modal: 'approval' | 'session' | null = null;
   private modalBox: any = null;
   private modalResolve?: (value: boolean) => void;
   private modalBuffer = '';
 
   constructor(options: ScreenOptions) {
-    // 只让 blessed 管理 stdin，不额外 setRawMode
     this.screen = blessed.screen({
       smartCSR: true,
       fullUnicode: true,
-      title: 'OpenAgents v2.4',
+      title: 'OpenAgents v2.5',
       dockBorders: false,
       input: process.stdin,
       output: process.stdout,
@@ -84,23 +83,25 @@ export class Screen {
       tags: true, style: { fg: 'white', bg: 'blue' },
     });
 
+    // chatBox 不启用 blessed 的 scrollable，我们自己管理滚动
     this.chatBox = blessed.box({
       parent: this.screen, top: 1, left: 0, width: chatW, height: chatH,
-      label: ' Chat ', border: { type: 'line' }, tags: true,
-      scrollable: true, alwaysScroll: true,
-      scrollbar: { style: { bg: 'gray' } },
+      label: ' Chat ', border: { type: 'line' },
+      tags: false,  // 不解析标签，避免内容被干扰
       style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
     });
 
     this.agentBox = blessed.box({
       parent: this.screen, top: 1, left: chatW, width: agW, height: chatH,
-      label: ' Agents ', border: { type: 'line' }, tags: true,
+      label: ' Agents ', border: { type: 'line' },
+      tags: false,
       style: { border: { fg: 'gray' }, label: { fg: 'cyan' } },
     });
 
     this.inputBox = blessed.box({
       parent: this.screen, top: h - 3, left: 0, width: w, height: 3,
-      label: ' Input ', border: { type: 'line' }, tags: true,
+      label: ' Input ', border: { type: 'line' },
+      tags: false,
       style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
     });
   }
@@ -120,13 +121,12 @@ export class Screen {
     this.agentBox.height = chatH;
     this.inputBox.top = h - 3;
     this.inputBox.width = w;
-    this.screen.render();
+    this.renderAll();
   }
 
-  // ─── 按键处理 (只用 blessed 的 key 事件) ───────────
+  // ─── 按键 ───────────────────────────────────────────
 
   private bindKeys(): void {
-    // 用 blessed 的 key 事件，不再手动 setRawMode
     this.screen.on('keypress', (_ch: string, key: any) => {
       if (!key) return;
       this.handleKey(key);
@@ -134,7 +134,6 @@ export class Screen {
 
     this.screen.on('resize', () => this.relayout());
 
-    // agent 状态轮询
     setInterval(() => {
       const fresh = this.orchestrator.getState().agents;
       if (JSON.stringify(fresh) !== JSON.stringify(this.agents)) {
@@ -148,23 +147,23 @@ export class Screen {
     const name = key.name || '';
     const ctrl = key.ctrl || false;
 
-    // Ctrl+C → 退出
+    // Ctrl+C
     if (name === 'c' && ctrl) {
       this.cleanup();
       process.exit(0);
     }
 
-    // 弹窗模式走独立逻辑
-    if (this.modal === 'approval') {
-      this.handleApprovalKey(name);
-      return;
-    }
-    if (this.modal === 'session') {
-      this.handleSessionKey(name, key.ch);
-      return;
-    }
+    // 弹窗模式
+    if (this.modal === 'approval') { this.handleApprovalKey(name); return; }
+    if (this.modal === 'session') { this.handleSessionKey(name, key.ch); return; }
 
-    // ESC → 取消 AI 回复
+    // 滚动：PageUp / PageDown / 鼠标滚轮
+    if (name === 'pageup') { this.scrollChat(-10); return; }
+    if (name === 'pagedown') { this.scrollChat(10); return; }
+    if (name === 'up') { this.scrollChat(-1); return; }
+    if (name === 'down') { this.scrollChat(1); return; }
+
+    // ESC → 取消
     if (name === 'escape' && this.isLoading) {
       this.orchestrator.abort();
       this.isLoading = false;
@@ -196,11 +195,10 @@ export class Screen {
       return;
     }
 
-    // 忽略其他控制/功能键
+    // 普通字符
     if (!key.ch || key.ch.length === 0) return;
     if (key.ch.charCodeAt(0) < 32) return;
 
-    // 普通字符输入
     this.inputBuffer =
       this.inputBuffer.slice(0, this.cursorPos) +
       key.ch +
@@ -209,27 +207,27 @@ export class Screen {
     this.renderInput();
   }
 
+  private scrollChat(delta: number): void {
+    // 计算可见行数（减去边框2行）
+    const visibleRows = (this.rows - 4) - 2;
+    const allLines = this.buildChatLines();
+    const maxOffset = Math.max(0, allLines.length - visibleRows);
+
+    this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset + delta));
+    this.renderMessages();
+  }
+
   // ─── 弹窗按键 ─────────────────────────────────────
 
   private handleApprovalKey(name: string): void {
     if (!this.modalResolve) return;
-    if (name === 'y') {
-      this.closeModal();
-      this.modalResolve(true);
-    } else if (name === 'n' || name === 'escape') {
-      this.closeModal();
-      this.modalResolve(false);
-    }
+    if (name === 'y') { this.closeModal(); this.modalResolve(true); }
+    else if (name === 'n' || name === 'escape') { this.closeModal(); this.modalResolve(false); }
   }
 
   private handleSessionKey(name: string, ch: string): void {
-    if (name === 'escape' || ch === 'q') {
-      this.closeModal();
-      return;
-    }
-    if (ch >= '0' && ch <= '9') {
-      this.modalBuffer += ch;
-    }
+    if (name === 'escape' || ch === 'q') { this.closeModal(); return; }
+    if (ch >= '0' && ch <= '9') this.modalBuffer += ch;
     if (name === 'enter') {
       const sessions = Session.listSessions();
       const idx = parseInt(this.modalBuffer) - 1;
@@ -238,6 +236,7 @@ export class Screen {
         if (loaded) {
           this.session = loaded;
           this.messages = loaded.getMessages();
+          this.scrollOffset = 0;
           this.renderAll();
         }
       }
@@ -246,25 +245,20 @@ export class Screen {
   }
 
   private closeModal(): void {
-    if (this.modalBox) {
-      this.modalBox.destroy();
-      this.modalBox = null;
-    }
+    if (this.modalBox) { this.modalBox.destroy(); this.modalBox = null; }
     this.modal = null;
     this.modalBuffer = '';
     this.screen.render();
   }
 
-  // ─── 消息/命令处理 ─────────────────────────────────
+  // ─── 消息/命令 ─────────────────────────────────────
 
   private async submitInput(input: string): Promise<void> {
-    if (input.startsWith('/')) {
-      this.handleCommand(input);
-      return;
-    }
+    if (input.startsWith('/')) { this.handleCommand(input); return; }
 
     this.isLoading = true;
     this.addMessage('user_input', 'user', input);
+    this.scrollOffset = 0; // 新消息自动滚到底
     this.renderAll();
 
     try {
@@ -284,30 +278,18 @@ export class Screen {
   private handleCommand(input: string): void {
     const cmd = input.slice(1).trim().split(' ')[0];
     switch (cmd) {
-      case 'quit': case 'exit':
-        this.cleanup(); process.exit(0); break;
-      case 'clear':
-        this.messages = []; break;
-      case 'reset':
-        this.orchestrator.resetAllAgents(); this.messages = []; break;
-      case 'save':
-        this.session.save();
-        this.addMessage('system', 'system', '会话已保存'); break;
-      case 'sessions':
-        this.showSessionPicker(); return; // 弹窗模式，不 reset inputBuffer
+      case 'quit': case 'exit': this.cleanup(); process.exit(0); break;
+      case 'clear': this.messages = []; this.scrollOffset = 0; break;
+      case 'reset': this.orchestrator.resetAllAgents(); this.messages = []; this.scrollOffset = 0; break;
+      case 'save': this.session.save(); this.addMessage('system', 'system', '会话已保存'); break;
+      case 'sessions': this.showSessionPicker(); return;
       case 'help':
         this.addMessage('system', 'system', [
-          '/quit, /exit  退出',
-          '/clear        清屏',
-          '/reset        重置',
-          '/save         保存',
-          '/sessions     历史会话',
-          '/help         帮助',
-          '',
-          'ESC 取消回复 | Ctrl+C 退出',
+          '/quit, /exit  退出', '/clear  清屏', '/reset  重置',
+          '/save  保存', '/sessions  历史会话', '/help  帮助',
+          '', '↑↓ 滚动 | PageUp/Down 翻页 | ESC 取消 | Ctrl+C 退出',
         ].join('\n')); break;
-      default:
-        this.addMessage('system', 'system', `未知命令: ${cmd}`);
+      default: this.addMessage('system', 'system', `未知命令: ${cmd}`);
     }
     this.inputBuffer = '';
     this.cursorPos = 0;
@@ -324,12 +306,13 @@ export class Screen {
     this.session.addMessage(msg);
   }
 
-  // ─── Orchestrator 事件 ─────────────────────────────
+  // ─── Orchestrator ──────────────────────────────────
 
   private bindOrchestrator(): void {
     this.orchestrator.on('response', (text: string) => {
       this.addMessage('agent_message', 'orchestrator', text);
       this.isLoading = false;
+      this.scrollOffset = 0;
       this.renderAll();
     });
 
@@ -356,54 +339,67 @@ export class Screen {
   }
 
   private renderStatus(): void {
-    const tag = this.isLoading
-      ? '{yellow-fg}⟳ 处理中{/yellow-fg}'
-      : '{green-fg}就绪{/green-fg}';
+    // 状态栏可以用 tags（内容固定，不会有用户输入）
+    const tag = this.isLoading ? '{yellow-fg}⟳ 处理中{/yellow-fg}' : '{green-fg}就绪{/green-fg}';
     this.statusBar.setContent(
-      ` {bold}OpenAgents{/bold} │ ${this.session.getName()} │ ${tag} │ ${this.messages.length}条 │ /help`
+      ` {bold}OpenAgents{/bold} │ ${this.session.getName()} │ ${tag} │ ${this.messages.length}条 │ ↑↓滚动 │ /help`
     );
     this.screen.render();
   }
 
-  private renderMessages(): void {
+  /** 构建聊天区所有行（纯文本，无 blessed 标签） */
+  private buildChatLines(): string[] {
     const lines: string[] = [];
-    for (const msg of this.messages.slice(-80)) {
+    for (const msg of this.messages) {
       const t = msg.timestamp.toLocaleTimeString();
-      let pre: string, clr: string;
+      let pre: string;
       switch (msg.type) {
-        case 'user_input':  pre = 'You';   clr = 'green';  break;
-        case 'agent_message': pre = 'Agent'; clr = 'yellow'; break;
-        case 'system':      pre = '!';     clr = 'magenta'; break;
-        default:            pre = msg.from; clr = 'white';
+        case 'user_input':   pre = '[You]'; break;
+        case 'agent_message': pre = '[Agent]'; break;
+        case 'system':       pre = '[!]'; break;
+        default:             pre = `[${msg.from}]`;
       }
-      lines.push(`{${clr}-fg}{bold}[${pre}]{/bold}{/${clr}-fg} {gray-fg}${t}{/gray-fg}`);
+      // 纯文本，不用任何 blessed 标签
+      lines.push(`${pre} ${t}`);
       for (const l of msg.content.split('\n')) lines.push(`  ${l}`);
       lines.push('');
     }
-    this.chatBox.setContent(lines.join('\n'));
-    this.chatBox.setScrollPerc(100);
+    return lines;
+  }
+
+  private renderMessages(): void {
+    const allLines = this.buildChatLines();
+    const visibleRows = (this.rows - 4) - 2; // 减去边框上下各1行
+    const maxOffset = Math.max(0, allLines.length - visibleRows);
+
+    // scrollOffset=0 表示最新消息在底部
+    const start = Math.max(0, allLines.length - visibleRows - this.scrollOffset);
+    const end = start + visibleRows;
+    const visible = allLines.slice(start, end);
+
+    this.chatBox.setContent(visible.join('\n'));
     this.screen.render();
   }
 
   private renderAgents(): void {
     const lines: string[] = [];
     for (const a of this.agents) {
-      let icon: string, clr: string;
+      let icon: string;
       switch (a.status) {
-        case 'idle':     icon = '○'; clr = 'gray';   break;
-        case 'working':  icon = '●'; clr = 'green';  break;
-        case 'thinking': icon = '◐'; clr = 'yellow'; break;
-        case 'error':    icon = '✗'; clr = 'red';    break;
-        default:         icon = '?'; clr = 'white';
+        case 'idle':     icon = '○'; break;
+        case 'working':  icon = '●'; break;
+        case 'thinking': icon = '◐'; break;
+        case 'error':    icon = '✗'; break;
+        default:         icon = '?';
       }
       const name = (a.name || a.type).slice(0, 10);
       const tk = a.tokenUsage > 0 ? ` ${a.tokenUsage}tk` : '';
-      lines.push(`{${clr}-fg}${icon}{/${clr}-fg} ${name}${tk}`);
+      lines.push(`${icon} ${name}${tk}`);
       if (a.currentTask) {
-        lines.push(`  {yellow-fg}${a.currentTask.description.slice(0, 14)}{/yellow-fg}`);
+        lines.push(`  ${a.currentTask.description.slice(0, 14)}`);
       }
     }
-    if (lines.length === 0) lines.push('{gray-fg}等待启动...{/gray-fg}');
+    if (lines.length === 0) lines.push('等待启动...');
     this.agentBox.setContent(lines.join('\n'));
     this.screen.render();
   }
@@ -420,18 +416,23 @@ export class Screen {
     return new Promise((resolve) => {
       const cmd = params.command || '';
       const reason = params.reason || '';
-      const lines = ['', `  工具: ${tool}`, `  命令: {red-fg}${cmd}{/red-fg}`];
-      if (reason) lines.push(`  原因: ${reason}`);
-      lines.push('', '  按 {bold}Y{/bold} 执行 | 按 {bold}N{/bold} 拒绝');
+      const content = [
+        '',
+        `  工具: ${tool}`,
+        `  命令: ${cmd}`,
+        reason ? `  原因: ${reason}` : '',
+        '',
+        '  Y 执行 | N 拒绝',
+      ].filter(Boolean).join('\n');
 
       this.modal = 'approval';
       this.modalResolve = resolve;
       this.modalBox = blessed.box({
         parent: this.screen, top: 'center', left: 'center',
-        width: 50, height: lines.length + 2,
-        label: ' ⚠ 审批 ', border: { type: 'double' }, tags: true,
+        width: 50, height: reason ? 10 : 8,
+        label: ' ⚠ 审批 ', border: { type: 'double' }, tags: false,
         style: { border: { fg: 'yellow' }, label: { fg: 'yellow' } },
-        content: lines.join('\n'),
+        content,
       });
       this.screen.render();
     });
@@ -453,8 +454,7 @@ export class Screen {
     this.modalBox = blessed.box({
       parent: this.screen, top: 'center', left: 'center',
       width: 55, height: sessions.length + 6,
-      label: ' 历史会话 (编号选择, q取消) ',
-      border: { type: 'line' }, tags: true,
+      label: ' 历史会话 (编号选择, q取消) ', border: { type: 'line' }, tags: false,
       style: { border: { fg: 'cyan' }, label: { fg: 'cyan' } },
       content: '\n' + lines.join('\n'),
     });

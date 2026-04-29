@@ -1537,7 +1537,7 @@ var init_screen = __esm({
       inputBuffer = "";
       cursorPos = 0;
       agentPanelWidth = 22;
-      // 弹窗模式：null 表示无弹窗
+      scrollOffset = 0;
       modal = null;
       modalBox = null;
       modalResolve;
@@ -1546,7 +1546,7 @@ var init_screen = __esm({
         this.screen = blessed.screen({
           smartCSR: true,
           fullUnicode: true,
-          title: "OpenAgents v2.4",
+          title: "OpenAgents v2.5",
           dockBorders: false,
           input: process.stdin,
           output: process.stdout,
@@ -1597,10 +1597,8 @@ var init_screen = __esm({
           height: chatH,
           label: " Chat ",
           border: { type: "line" },
-          tags: true,
-          scrollable: true,
-          alwaysScroll: true,
-          scrollbar: { style: { bg: "gray" } },
+          tags: false,
+          // 不解析标签，避免内容被干扰
           style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
         });
         this.agentBox = blessed.box({
@@ -1611,7 +1609,7 @@ var init_screen = __esm({
           height: chatH,
           label: " Agents ",
           border: { type: "line" },
-          tags: true,
+          tags: false,
           style: { border: { fg: "gray" }, label: { fg: "cyan" } }
         });
         this.inputBox = blessed.box({
@@ -1622,7 +1620,7 @@ var init_screen = __esm({
           height: 3,
           label: " Input ",
           border: { type: "line" },
-          tags: true,
+          tags: false,
           style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
         });
       }
@@ -1640,9 +1638,9 @@ var init_screen = __esm({
         this.agentBox.height = chatH;
         this.inputBox.top = h - 3;
         this.inputBox.width = w;
-        this.screen.render();
+        this.renderAll();
       }
-      // ─── 按键处理 (只用 blessed 的 key 事件) ───────────
+      // ─── 按键 ───────────────────────────────────────────
       bindKeys() {
         this.screen.on("keypress", (_ch, key) => {
           if (!key) return;
@@ -1670,6 +1668,22 @@ var init_screen = __esm({
         }
         if (this.modal === "session") {
           this.handleSessionKey(name, key.ch);
+          return;
+        }
+        if (name === "pageup") {
+          this.scrollChat(-10);
+          return;
+        }
+        if (name === "pagedown") {
+          this.scrollChat(10);
+          return;
+        }
+        if (name === "up") {
+          this.scrollChat(-1);
+          return;
+        }
+        if (name === "down") {
+          this.scrollChat(1);
           return;
         }
         if (name === "escape" && this.isLoading) {
@@ -1702,6 +1716,13 @@ var init_screen = __esm({
         this.cursorPos += key.ch.length;
         this.renderInput();
       }
+      scrollChat(delta) {
+        const visibleRows = this.rows - 4 - 2;
+        const allLines = this.buildChatLines();
+        const maxOffset = Math.max(0, allLines.length - visibleRows);
+        this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset + delta));
+        this.renderMessages();
+      }
       // ─── 弹窗按键 ─────────────────────────────────────
       handleApprovalKey(name) {
         if (!this.modalResolve) return;
@@ -1718,9 +1739,7 @@ var init_screen = __esm({
           this.closeModal();
           return;
         }
-        if (ch >= "0" && ch <= "9") {
-          this.modalBuffer += ch;
-        }
+        if (ch >= "0" && ch <= "9") this.modalBuffer += ch;
         if (name === "enter") {
           const sessions = Session.listSessions();
           const idx = parseInt(this.modalBuffer) - 1;
@@ -1729,6 +1748,7 @@ var init_screen = __esm({
             if (loaded) {
               this.session = loaded;
               this.messages = loaded.getMessages();
+              this.scrollOffset = 0;
               this.renderAll();
             }
           }
@@ -1744,7 +1764,7 @@ var init_screen = __esm({
         this.modalBuffer = "";
         this.screen.render();
       }
-      // ─── 消息/命令处理 ─────────────────────────────────
+      // ─── 消息/命令 ─────────────────────────────────────
       async submitInput(input) {
         if (input.startsWith("/")) {
           this.handleCommand(input);
@@ -1752,6 +1772,7 @@ var init_screen = __esm({
         }
         this.isLoading = true;
         this.addMessage("user_input", "user", input);
+        this.scrollOffset = 0;
         this.renderAll();
         try {
           await this.orchestrator.processUserInput(input);
@@ -1775,10 +1796,12 @@ var init_screen = __esm({
             break;
           case "clear":
             this.messages = [];
+            this.scrollOffset = 0;
             break;
           case "reset":
             this.orchestrator.resetAllAgents();
             this.messages = [];
+            this.scrollOffset = 0;
             break;
           case "save":
             this.session.save();
@@ -1787,17 +1810,16 @@ var init_screen = __esm({
           case "sessions":
             this.showSessionPicker();
             return;
-          // 弹窗模式，不 reset inputBuffer
           case "help":
             this.addMessage("system", "system", [
               "/quit, /exit  \u9000\u51FA",
-              "/clear        \u6E05\u5C4F",
-              "/reset        \u91CD\u7F6E",
-              "/save         \u4FDD\u5B58",
-              "/sessions     \u5386\u53F2\u4F1A\u8BDD",
-              "/help         \u5E2E\u52A9",
+              "/clear  \u6E05\u5C4F",
+              "/reset  \u91CD\u7F6E",
+              "/save  \u4FDD\u5B58",
+              "/sessions  \u5386\u53F2\u4F1A\u8BDD",
+              "/help  \u5E2E\u52A9",
               "",
-              "ESC \u53D6\u6D88\u56DE\u590D | Ctrl+C \u9000\u51FA"
+              "\u2191\u2193 \u6EDA\u52A8 | PageUp/Down \u7FFB\u9875 | ESC \u53D6\u6D88 | Ctrl+C \u9000\u51FA"
             ].join("\n"));
             break;
           default:
@@ -1818,11 +1840,12 @@ var init_screen = __esm({
         this.messages.push(msg);
         this.session.addMessage(msg);
       }
-      // ─── Orchestrator 事件 ─────────────────────────────
+      // ─── Orchestrator ──────────────────────────────────
       bindOrchestrator() {
         this.orchestrator.on("response", (text) => {
           this.addMessage("agent_message", "orchestrator", text);
           this.isLoading = false;
+          this.scrollOffset = 0;
           this.renderAll();
         });
         this.orchestrator.on("error", (err) => {
@@ -1846,73 +1869,73 @@ var init_screen = __esm({
       renderStatus() {
         const tag = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
         this.statusBar.setContent(
-          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 /help`
+          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 \u2191\u2193\u6EDA\u52A8 \u2502 /help`
         );
         this.screen.render();
       }
-      renderMessages() {
+      /** 构建聊天区所有行（纯文本，无 blessed 标签） */
+      buildChatLines() {
         const lines = [];
-        for (const msg of this.messages.slice(-80)) {
+        for (const msg of this.messages) {
           const t = msg.timestamp.toLocaleTimeString();
-          let pre, clr;
+          let pre;
           switch (msg.type) {
             case "user_input":
-              pre = "You";
-              clr = "green";
+              pre = "[You]";
               break;
             case "agent_message":
-              pre = "Agent";
-              clr = "yellow";
+              pre = "[Agent]";
               break;
             case "system":
-              pre = "!";
-              clr = "magenta";
+              pre = "[!]";
               break;
             default:
-              pre = msg.from;
-              clr = "white";
+              pre = `[${msg.from}]`;
           }
-          lines.push(`{${clr}-fg}{bold}[${pre}]{/bold}{/${clr}-fg} {gray-fg}${t}{/gray-fg}`);
+          lines.push(`${pre} ${t}`);
           for (const l of msg.content.split("\n")) lines.push(`  ${l}`);
           lines.push("");
         }
-        this.chatBox.setContent(lines.join("\n"));
-        this.chatBox.setScrollPerc(100);
+        return lines;
+      }
+      renderMessages() {
+        const allLines = this.buildChatLines();
+        const visibleRows = this.rows - 4 - 2;
+        const maxOffset = Math.max(0, allLines.length - visibleRows);
+        const start = Math.max(0, allLines.length - visibleRows - this.scrollOffset);
+        const end = start + visibleRows;
+        const visible = allLines.slice(start, end);
+        this.chatBox.setContent(visible.join("\n"));
         this.screen.render();
       }
       renderAgents() {
         const lines = [];
         for (const a of this.agents) {
-          let icon, clr;
+          let icon;
           switch (a.status) {
             case "idle":
               icon = "\u25CB";
-              clr = "gray";
               break;
             case "working":
               icon = "\u25CF";
-              clr = "green";
               break;
             case "thinking":
               icon = "\u25D0";
-              clr = "yellow";
               break;
             case "error":
               icon = "\u2717";
-              clr = "red";
               break;
             default:
               icon = "?";
-              clr = "white";
           }
           const name = (a.name || a.type).slice(0, 10);
           const tk = a.tokenUsage > 0 ? ` ${a.tokenUsage}tk` : "";
-          lines.push(`{${clr}-fg}${icon}{/${clr}-fg} ${name}${tk}`);
+          lines.push(`${icon} ${name}${tk}`);
           if (a.currentTask) {
-            lines.push(`  {yellow-fg}${a.currentTask.description.slice(0, 14)}{/yellow-fg}`);
+            lines.push(`  ${a.currentTask.description.slice(0, 14)}`);
           }
         }
-        if (lines.length === 0) lines.push("{gray-fg}\u7B49\u5F85\u542F\u52A8...{/gray-fg}");
+        if (lines.length === 0) lines.push("\u7B49\u5F85\u542F\u52A8...");
         this.agentBox.setContent(lines.join("\n"));
         this.screen.render();
       }
@@ -1926,9 +1949,14 @@ var init_screen = __esm({
         return new Promise((resolve2) => {
           const cmd = params.command || "";
           const reason = params.reason || "";
-          const lines = ["", `  \u5DE5\u5177: ${tool}`, `  \u547D\u4EE4: {red-fg}${cmd}{/red-fg}`];
-          if (reason) lines.push(`  \u539F\u56E0: ${reason}`);
-          lines.push("", "  \u6309 {bold}Y{/bold} \u6267\u884C | \u6309 {bold}N{/bold} \u62D2\u7EDD");
+          const content = [
+            "",
+            `  \u5DE5\u5177: ${tool}`,
+            `  \u547D\u4EE4: ${cmd}`,
+            reason ? `  \u539F\u56E0: ${reason}` : "",
+            "",
+            "  Y \u6267\u884C | N \u62D2\u7EDD"
+          ].filter(Boolean).join("\n");
           this.modal = "approval";
           this.modalResolve = resolve2;
           this.modalBox = blessed.box({
@@ -1936,12 +1964,12 @@ var init_screen = __esm({
             top: "center",
             left: "center",
             width: 50,
-            height: lines.length + 2,
+            height: reason ? 10 : 8,
             label: " \u26A0 \u5BA1\u6279 ",
             border: { type: "double" },
-            tags: true,
+            tags: false,
             style: { border: { fg: "yellow" }, label: { fg: "yellow" } },
-            content: lines.join("\n")
+            content
           });
           this.screen.render();
         });
@@ -1967,7 +1995,7 @@ var init_screen = __esm({
           height: sessions.length + 6,
           label: " \u5386\u53F2\u4F1A\u8BDD (\u7F16\u53F7\u9009\u62E9, q\u53D6\u6D88) ",
           border: { type: "line" },
-          tags: true,
+          tags: false,
           style: { border: { fg: "cyan" }, label: { fg: "cyan" } },
           content: "\n" + lines.join("\n")
         });
@@ -2343,7 +2371,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.4.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.5.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
