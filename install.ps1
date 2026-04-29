@@ -2,6 +2,7 @@
 # 使用方法: irm https://raw.githubusercontent.com/zhangjiabo522/openagents/main/install.ps1 | iex
 
 $REPO_URL = "https://github.com/zhangjiabo522/openagents.git"
+$INSTALL_DIR = "$env:USERPROFILE\.openagents-cli"
 
 Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║           Welcome to OpenAgents Installer                ║" -ForegroundColor Cyan
@@ -44,10 +45,24 @@ if (-not $gitPath) {
 
 Write-Host "✓ git $(git --version | Select-String -Pattern '[\d.]+' | ForEach-Object { $_.Matches.Value }) 已安装" -ForegroundColor Green
 
-# 安装 openagents
+# 克隆仓库
 Write-Host ""
-Write-Host "📦 正在从 GitHub 安装 openagents..." -ForegroundColor Yellow
-npm install -g $REPO_URL
+Write-Host "📦 正在从 GitHub 克隆 openagents..." -ForegroundColor Yellow
+if (Test-Path $INSTALL_DIR) {
+    Remove-Item -Recurse -Force $INSTALL_DIR
+}
+git clone --depth 1 $REPO_URL $INSTALL_DIR
+
+# 安装依赖
+Write-Host ""
+Write-Host "📦 正在安装依赖..." -ForegroundColor Yellow
+Set-Location $INSTALL_DIR
+npm install --production
+
+# 全局链接
+Write-Host ""
+Write-Host "🔗 正在注册全局命令..." -ForegroundColor Yellow
+npm link
 
 # 验证安装
 $openagentsPath = Get-Command openagents -ErrorAction SilentlyContinue

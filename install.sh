@@ -6,6 +6,7 @@
 set -e
 
 REPO_URL="https://github.com/zhangjiabo522/openagents.git"
+INSTALL_DIR="$HOME/.openagents-cli"
 
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║           Welcome to OpenAgents Installer                ║"
@@ -45,10 +46,24 @@ fi
 
 echo "✓ git $(git --version | cut -d' ' -f3) 已安装"
 
-# 安装 openagents
+# 克隆仓库
 echo ""
-echo "📦 正在从 GitHub 安装 openagents..."
-npm install -g "$REPO_URL"
+echo "📦 正在从 GitHub 克隆 openagents..."
+if [ -d "$INSTALL_DIR" ]; then
+    rm -rf "$INSTALL_DIR"
+fi
+git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+
+# 安装依赖
+echo ""
+echo "📦 正在安装依赖..."
+cd "$INSTALL_DIR"
+npm install --production
+
+# 全局链接
+echo ""
+echo "🔗 正在注册全局命令..."
+npm link
 
 # 验证安装
 if command -v openagents &> /dev/null; then
