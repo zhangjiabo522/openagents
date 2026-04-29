@@ -9,7 +9,6 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepare": "tsup",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts,.tsx"
