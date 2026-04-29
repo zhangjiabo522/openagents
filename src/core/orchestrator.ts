@@ -29,6 +29,7 @@ export class Orchestrator extends EventEmitter {
   private completedTasks: number = 0;
   private totalTasks: number = 0;
   private approveCallback?: ApproveCallback;
+  private aborted = false;
 
   constructor(config: AppConfig, llm: LLMClient) {
     super();
@@ -77,7 +78,13 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
+  abort(): void {
+    this.aborted = true;
+    this.setStatus('idle');
+  }
+
   async processUserInput(input: string): Promise<void> {
+    this.aborted = false;
     messageBus.publish({
       type: 'user_input',
       from: 'user',
@@ -139,11 +146,12 @@ export class Orchestrator extends EventEmitter {
 
     try {
       const result = await agent.processTask(input);
+      if (this.aborted) return;
       this.emit('response', result.content);
     } catch (error) {
-      this.emit('error', error);
+      if (!this.aborted) this.emit('error', error);
     }
-    this.setStatus('idle');
+    if (!this.aborted) this.setStatus('idle');
   }
 
   private async handleDirectTask(input: string): Promise<void> {
@@ -153,7 +161,7 @@ export class Orchestrator extends EventEmitter {
 
     try {
       const result = await agent.processTask(input);
-      // 组合输出：主体内容 + 工具结果折叠 + 工具总结
+      if (this.aborted) return;
       let output = result.content;
       if (result.toolResults) {
         output += '\n\n---\n' + result.toolResults;
@@ -163,9 +171,9 @@ export class Orchestrator extends EventEmitter {
       }
       this.emit('response', output);
     } catch (error) {
-      this.emit('error', error);
+      if (!this.aborted) this.emit('error', error);
     }
-    this.setStatus('idle');
+    if (!this.aborted) this.setStatus('idle');
   }
 
   private async handleComplexTask(input: string): Promise<void> {
@@ -173,20 +181,22 @@ export class Orchestrator extends EventEmitter {
 
     try {
       const plan = await this.planner.planTask(input);
+      if (this.aborted) return;
       this.currentPlan = plan;
       this.totalTasks = plan.tasks.length;
       this.completedTasks = 0;
 
       this.setStatus('executing');
       const results = await this.executePlan(plan);
+      if (this.aborted) return;
 
       this.setStatus('summarizing');
       const summary = this.generateSummary(plan, results);
       this.emit('response', summary);
     } catch (error) {
-      this.emit('error', error);
+      if (!this.aborted) this.emit('error', error);
     }
-    this.setStatus('idle');
+    if (!this.aborted) this.setStatus('idle');
   }
 
   private async handleDiscussion(input: string): Promise<void> {
@@ -197,8 +207,10 @@ export class Orchestrator extends EventEmitter {
       .slice(0, 2);
 
     for (const agent of activeAgents) {
+      if (this.aborted) break;
       try {
         const result = await agent.processTask(`用户提问: "${input}"\n请从你的专业角度回答。`);
+        if (this.aborted) break;
         responses.push(`**${agent.name}**: ${result.content}`);
         this.completedTasks++;
       } catch {
@@ -206,8 +218,10 @@ export class Orchestrator extends EventEmitter {
       }
     }
 
-    this.emit('response', responses.join('\n\n---\n\n'));
-    this.setStatus('idle');
+    if (!this.aborted) {
+      this.emit('response', responses.join('\n\n---\n\n'));
+      this.setStatus('idle');
+    }
   }
 
   private findBestAgentForTask(input: string): BaseAgent | undefined {

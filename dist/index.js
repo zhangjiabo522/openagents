@@ -1122,6 +1122,7 @@ var init_orchestrator = __esm({
       completedTasks = 0;
       totalTasks = 0;
       approveCallback;
+      aborted = false;
       constructor(config, llm) {
         super();
         this.config = config;
@@ -1162,7 +1163,12 @@ var init_orchestrator = __esm({
           }
         }
       }
+      abort() {
+        this.aborted = true;
+        this.setStatus("idle");
+      }
       async processUserInput(input) {
+        this.aborted = false;
         messageBus.publish({
           type: "user_input",
           from: "user",
@@ -1229,11 +1235,12 @@ var init_orchestrator = __esm({
         if (!agent) return;
         try {
           const result = await agent.processTask(input);
+          if (this.aborted) return;
           this.emit("response", result.content);
         } catch (error) {
-          this.emit("error", error);
+          if (!this.aborted) this.emit("error", error);
         }
-        this.setStatus("idle");
+        if (!this.aborted) this.setStatus("idle");
       }
       async handleDirectTask(input) {
         this.setStatus("executing");
@@ -1241,6 +1248,7 @@ var init_orchestrator = __esm({
         if (!agent) return;
         try {
           const result = await agent.processTask(input);
+          if (this.aborted) return;
           let output = result.content;
           if (result.toolResults) {
             output += "\n\n---\n" + result.toolResults;
@@ -1250,42 +1258,48 @@ var init_orchestrator = __esm({
           }
           this.emit("response", output);
         } catch (error) {
-          this.emit("error", error);
+          if (!this.aborted) this.emit("error", error);
         }
-        this.setStatus("idle");
+        if (!this.aborted) this.setStatus("idle");
       }
       async handleComplexTask(input) {
         this.setStatus("planning");
         try {
           const plan = await this.planner.planTask(input);
+          if (this.aborted) return;
           this.currentPlan = plan;
           this.totalTasks = plan.tasks.length;
           this.completedTasks = 0;
           this.setStatus("executing");
           const results = await this.executePlan(plan);
+          if (this.aborted) return;
           this.setStatus("summarizing");
           const summary = this.generateSummary(plan, results);
           this.emit("response", summary);
         } catch (error) {
-          this.emit("error", error);
+          if (!this.aborted) this.emit("error", error);
         }
-        this.setStatus("idle");
+        if (!this.aborted) this.setStatus("idle");
       }
       async handleDiscussion(input) {
         this.setStatus("executing");
         const responses = [];
         const activeAgents = Array.from(this.agents.values()).filter((a) => a.type !== "planner").slice(0, 2);
         for (const agent of activeAgents) {
+          if (this.aborted) break;
           try {
             const result = await agent.processTask(`\u7528\u6237\u63D0\u95EE: "${input}"
 \u8BF7\u4ECE\u4F60\u7684\u4E13\u4E1A\u89D2\u5EA6\u56DE\u7B54\u3002`);
+            if (this.aborted) break;
             responses.push(`**${agent.name}**: ${result.content}`);
             this.completedTasks++;
           } catch {
           }
         }
-        this.emit("response", responses.join("\n\n---\n\n"));
-        this.setStatus("idle");
+        if (!this.aborted) {
+          this.emit("response", responses.join("\n\n---\n\n"));
+          this.setStatus("idle");
+        }
       }
       findBestAgentForTask(input) {
         const lower = input.toLowerCase();
@@ -1526,7 +1540,7 @@ var init_screen = __esm({
         this.screen = blessed.screen({
           smartCSR: true,
           fullUnicode: true,
-          title: "OpenAgents v2.0",
+          title: "OpenAgents v2.2",
           dockBorders: true,
           input: process.stdin,
           output: process.stdout
@@ -1546,24 +1560,29 @@ var init_screen = __esm({
         this.renderMessages();
         this.renderAgents();
         this.renderInputLine();
+        this.renderStatus();
       }
       createLayout() {
+        const cols = process.stdout.columns || 120;
+        const rows = process.stdout.rows || 30;
+        const agentWidth = 24;
+        const chatWidth = cols - agentWidth;
         this.statusBar = blessed.box({
           parent: this.screen,
           top: 0,
           left: 0,
-          width: "100%",
+          width: cols,
           height: 1,
           tags: true,
           style: { fg: "white", bg: "blue" },
-          content: " OpenAgents v2.0 | \u4F1A\u8BDD: " + this.session.getName() + " | Ctrl+C \u9000\u51FA | /help \u5E2E\u52A9"
+          content: " OpenAgents v2.2 | Ctrl+C \u9000\u51FA | ESC \u53D6\u6D88 | /help \u5E2E\u52A9"
         });
         this.chatBox = blessed.box({
           parent: this.screen,
           top: 1,
           left: 0,
-          width: "75%",
-          height: "100%-4",
+          width: chatWidth,
+          height: rows - 4,
           label: " Chat ",
           border: { type: "line" },
           tags: true,
@@ -1575,9 +1594,9 @@ var init_screen = __esm({
         this.agentBox = blessed.box({
           parent: this.screen,
           top: 1,
-          left: "75%",
-          width: "25%",
-          height: "100%-4",
+          left: chatWidth,
+          width: agentWidth,
+          height: rows - 4,
           label: " Agents ",
           border: { type: "line" },
           tags: true,
@@ -1587,7 +1606,7 @@ var init_screen = __esm({
           parent: this.screen,
           bottom: 0,
           left: 0,
-          width: "100%",
+          width: cols,
           height: 3,
           label: " Input ",
           border: { type: "line" },
@@ -1621,6 +1640,7 @@ var init_screen = __esm({
         this.orchestrator.on("status_change", () => {
           this.agents = this.orchestrator.getState().agents;
           this.renderAgents();
+          this.renderStatus();
         });
         setInterval(() => {
           const newAgents = this.orchestrator.getState().agents;
@@ -1628,12 +1648,38 @@ var init_screen = __esm({
             this.agents = newAgents;
             this.renderAgents();
           }
-        }, 3e3);
+        }, 2e3);
+        this.screen.on("resize", () => {
+          this.relayout();
+        });
+      }
+      relayout() {
+        const cols = process.stdout.columns || 120;
+        const rows = process.stdout.rows || 30;
+        const agentWidth = 24;
+        const chatWidth = cols - agentWidth;
+        this.statusBar.width = cols;
+        this.chatBox.width = chatWidth;
+        this.chatBox.height = rows - 4;
+        this.agentBox.left = chatWidth;
+        this.agentBox.width = agentWidth;
+        this.agentBox.height = rows - 4;
+        this.inputLine.width = cols;
+        this.screen.render();
       }
       handleKeyPress(key) {
         if (key === "") {
           this.cleanup();
           process.exit(0);
+        }
+        if (key === "\x1B" && this.isLoading) {
+          this.orchestrator.abort();
+          this.isLoading = false;
+          this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
+          this.renderMessages();
+          this.renderStatus();
+          this.renderInputLine();
+          return;
         }
         if (key === "\r" || key === "\n") {
           if (this.inputBuffer.trim() && !this.isLoading) {
@@ -1673,7 +1719,11 @@ var init_screen = __esm({
         try {
           await this.orchestrator.processUserInput(input);
         } catch (error) {
-          this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
+          if (error.name === "AbortError") {
+            this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
+          } else {
+            this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
+          }
           this.isLoading = false;
         }
         this.session.save();
@@ -1713,7 +1763,11 @@ var init_screen = __esm({
 /reset        - \u91CD\u7F6E Agent
 /save         - \u4FDD\u5B58\u4F1A\u8BDD
 /sessions     - \u5386\u53F2\u4F1A\u8BDD
-/help         - \u5E2E\u52A9`);
+/help         - \u5E2E\u52A9
+
+\u5FEB\u6377\u952E:
+ESC           - \u53D6\u6D88\u5F53\u524D AI \u56DE\u590D
+Ctrl+C        - \u9000\u51FA`);
             this.renderMessages();
             break;
           default:
@@ -1794,12 +1848,12 @@ var init_screen = __esm({
               icon = "?";
               color = "white";
           }
-          lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${agent.name}{/bold}`);
-          lines.push(`  {gray-fg}${agent.type} | ${agent.tokenUsage}tk{/gray-fg}`);
+          const name = agent.name || agent.type;
+          const tk = agent.tokenUsage > 0 ? `${agent.tokenUsage}tk` : "";
+          lines.push(`{${color}-fg}${icon}{/${color}-fg} {bold}${name}{/bold} {gray-fg}${tk}{/gray-fg}`);
           if (agent.currentTask) {
-            lines.push(`  {yellow-fg}\u25B6 ${agent.currentTask.description.slice(0, 20)}...{/yellow-fg}`);
+            lines.push(`  {yellow-fg}\u25B6 ${agent.currentTask.description.slice(0, 16)}...{/yellow-fg}`);
           }
-          lines.push("");
         }
         if (lines.length === 0) {
           lines.push("{gray-fg}\u7B49\u5F85\u542F\u52A8...{/gray-fg}");
@@ -1808,8 +1862,8 @@ var init_screen = __esm({
         this.screen.render();
       }
       renderStatus() {
-        const status = this.isLoading ? "{yellow-fg}\u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
-        this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} \u2502 ${this.session.getName()} \u2502 ${status} \u2502 ${this.messages.length}\u6761\u6D88\u606F \u2502 /help`);
+        const status = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
+        this.statusBar.setContent(` {bold}OpenAgents v2.2{/bold} \u2502 ${this.session.getName()} \u2502 ${status} \u2502 ${this.messages.length}\u6761 \u2502 ESC\u53D6\u6D88 \u2502 /help`);
         this.screen.render();
       }
       renderInputLine() {
@@ -2285,7 +2339,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.1.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.2.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
