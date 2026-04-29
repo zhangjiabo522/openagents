@@ -9,7 +9,7 @@ export function createCommands(): Command {
   program
     .name('openagents')
     .description('Terminal multi-agent collaboration tool')
-    .version('2.5.0');
+    .version('3.0.0');
 
   // 启动命令
   program

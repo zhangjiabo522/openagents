@@ -1513,22 +1513,15 @@ var screen_exports = {};
 __export(screen_exports, {
   Screen: () => Screen
 });
-import { createRequire } from "module";
-var require2, blessed, Screen;
+import chalk from "chalk";
+var Screen;
 var init_screen = __esm({
   "src/tui/screen.ts"() {
     "use strict";
     init_orchestrator();
     init_session();
     init_client();
-    require2 = createRequire(import.meta.url);
-    blessed = require2("blessed");
     Screen = class {
-      screen;
-      chatBox;
-      agentBox;
-      statusBar;
-      inputBox;
       orchestrator;
       session;
       messages = [];
@@ -1536,22 +1529,14 @@ var init_screen = __esm({
       isLoading = false;
       inputBuffer = "";
       cursorPos = 0;
-      agentPanelWidth = 22;
       scrollOffset = 0;
+      agentPanelWidth = 20;
+      lastRender = "";
+      // 弹窗状态
       modal = null;
-      modalBox = null;
       modalResolve;
-      modalBuffer = "";
+      modalData = null;
       constructor(options) {
-        this.screen = blessed.screen({
-          smartCSR: true,
-          fullUnicode: true,
-          title: "OpenAgents v2.5",
-          dockBorders: false,
-          input: process.stdin,
-          output: process.stdout,
-          terminal: "xterm-256color"
-        });
         const llm = new LLMClient(options.config.providers);
         this.orchestrator = new Orchestrator(options.config, llm);
         this.orchestrator.setApproveCallback((tool, params) => this.showApproval(tool, params));
@@ -1562,138 +1547,88 @@ var init_screen = __esm({
         } else {
           this.session = new Session(options.sessionName);
         }
-        this.buildLayout();
+        this.initTerminal();
         this.bindKeys();
         this.bindOrchestrator();
-        this.renderAll();
+        this.render();
       }
-      // ─── 布局 ───────────────────────────────────────────
+      // ─── 终端初始化 ─────────────────────────────────────
+      initTerminal() {
+        process.stdout.write("\x1B[?1049h");
+        process.stdout.write("\x1B[?25l");
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.setEncoding("utf-8");
+        process.stdout.on("resize", () => this.render());
+      }
+      restoreTerminal() {
+        process.stdout.write("\x1B[?25h");
+        process.stdout.write("\x1B[?1049l");
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.pause();
+      }
       get cols() {
-        return this.screen.cols || 120;
+        return process.stdout.columns || 120;
       }
       get rows() {
-        return this.screen.rows || 30;
-      }
-      buildLayout() {
-        const w = this.cols;
-        const h = this.rows;
-        const agW = this.agentPanelWidth;
-        const chatW = w - agW;
-        const chatH = h - 4;
-        this.statusBar = blessed.box({
-          parent: this.screen,
-          top: 0,
-          left: 0,
-          width: w,
-          height: 1,
-          tags: true,
-          style: { fg: "white", bg: "blue" }
-        });
-        this.chatBox = blessed.box({
-          parent: this.screen,
-          top: 1,
-          left: 0,
-          width: chatW,
-          height: chatH,
-          label: " Chat ",
-          border: { type: "line" },
-          tags: false,
-          // 不解析标签，避免内容被干扰
-          style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
-        });
-        this.agentBox = blessed.box({
-          parent: this.screen,
-          top: 1,
-          left: chatW,
-          width: agW,
-          height: chatH,
-          label: " Agents ",
-          border: { type: "line" },
-          tags: false,
-          style: { border: { fg: "gray" }, label: { fg: "cyan" } }
-        });
-        this.inputBox = blessed.box({
-          parent: this.screen,
-          top: h - 3,
-          left: 0,
-          width: w,
-          height: 3,
-          label: " Input ",
-          border: { type: "line" },
-          tags: false,
-          style: { border: { fg: "cyan" }, label: { fg: "cyan" } }
-        });
-      }
-      relayout() {
-        const w = this.cols;
-        const h = this.rows;
-        const agW = this.agentPanelWidth;
-        const chatW = w - agW;
-        const chatH = h - 4;
-        this.statusBar.width = w;
-        this.chatBox.width = chatW;
-        this.chatBox.height = chatH;
-        this.agentBox.left = chatW;
-        this.agentBox.width = agW;
-        this.agentBox.height = chatH;
-        this.inputBox.top = h - 3;
-        this.inputBox.width = w;
-        this.renderAll();
+        return process.stdout.rows || 30;
       }
       // ─── 按键 ───────────────────────────────────────────
       bindKeys() {
-        this.screen.on("keypress", (_ch, key) => {
-          if (!key) return;
-          this.handleKey(key);
+        process.stdin.on("data", (data) => {
+          this.onKey(data);
         });
-        this.screen.on("resize", () => this.relayout());
         setInterval(() => {
           const fresh = this.orchestrator.getState().agents;
           if (JSON.stringify(fresh) !== JSON.stringify(this.agents)) {
             this.agents = fresh;
-            this.renderAgents();
+            this.render();
           }
         }, 2e3);
       }
-      handleKey(key) {
-        const name = key.name || "";
-        const ctrl = key.ctrl || false;
-        if (name === "c" && ctrl) {
-          this.cleanup();
+      onKey(data) {
+        if (data === "") {
+          this.restoreTerminal();
           process.exit(0);
         }
         if (this.modal === "approval") {
-          this.handleApprovalKey(name);
+          this.onApprovalKey(data);
           return;
         }
         if (this.modal === "session") {
-          this.handleSessionKey(name, key.ch);
+          this.onSessionKey(data);
           return;
         }
-        if (name === "pageup") {
-          this.scrollChat(-10);
+        if (data === "\x1B") {
+          if (this.isLoading) {
+            this.orchestrator.abort();
+            this.isLoading = false;
+            this.addMsg("system", "system", "\u5DF2\u53D6\u6D88");
+            this.render();
+          }
           return;
         }
-        if (name === "pagedown") {
-          this.scrollChat(10);
+        if (data === "\x1B[A") {
+          this.scroll(-1);
           return;
         }
-        if (name === "up") {
-          this.scrollChat(-1);
+        if (data === "\x1B[B") {
+          this.scroll(1);
           return;
         }
-        if (name === "down") {
-          this.scrollChat(1);
+        if (data === "\x1B[5~") {
+          this.scroll(-10);
           return;
         }
-        if (name === "escape" && this.isLoading) {
-          this.orchestrator.abort();
-          this.isLoading = false;
-          this.addMessage("system", "system", "\u5DF2\u53D6\u6D88");
-          this.renderAll();
+        if (data === "\x1B[6~") {
+          this.scroll(10);
           return;
         }
-        if (name === "enter") {
+        if (data === "\r" || data === "\n") {
           if (this.inputBuffer.trim() && !this.isLoading) {
             const text = this.inputBuffer;
             this.inputBuffer = "";
@@ -1702,96 +1637,93 @@ var init_screen = __esm({
           }
           return;
         }
-        if (name === "backspace") {
+        if (data === "\x7F" || data === "\b") {
           if (this.cursorPos > 0) {
             this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
             this.cursorPos--;
-            this.renderInput();
+            this.render();
           }
           return;
         }
-        if (!key.ch || key.ch.length === 0) return;
-        if (key.ch.charCodeAt(0) < 32) return;
-        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + key.ch + this.inputBuffer.slice(this.cursorPos);
-        this.cursorPos += key.ch.length;
-        this.renderInput();
+        if (data === "	") return;
+        if (data.startsWith("\x1B[")) return;
+        if (data.charCodeAt(0) < 32) return;
+        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + data + this.inputBuffer.slice(this.cursorPos);
+        this.cursorPos += data.length;
+        this.render();
       }
-      scrollChat(delta) {
-        const visibleRows = this.rows - 4 - 2;
-        const allLines = this.buildChatLines();
-        const maxOffset = Math.max(0, allLines.length - visibleRows);
-        this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset + delta));
-        this.renderMessages();
+      scroll(delta) {
+        const maxOffset = Math.max(0, this.messages.length - 5);
+        this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset - delta));
+        this.render();
       }
       // ─── 弹窗按键 ─────────────────────────────────────
-      handleApprovalKey(name) {
-        if (!this.modalResolve) return;
-        if (name === "y") {
+      onApprovalKey(data) {
+        if (data === "y" || data === "Y") {
           this.closeModal();
-          this.modalResolve(true);
-        } else if (name === "n" || name === "escape") {
+          this.modalResolve?.(true);
+        } else if (data === "n" || data === "N" || data === "\x1B") {
           this.closeModal();
-          this.modalResolve(false);
+          this.modalResolve?.(false);
         }
       }
-      handleSessionKey(name, ch) {
-        if (name === "escape" || ch === "q") {
+      onSessionKey(data) {
+        if (data === "q" || data === "\x1B") {
           this.closeModal();
           return;
         }
-        if (ch >= "0" && ch <= "9") this.modalBuffer += ch;
-        if (name === "enter") {
+        if (data >= "0" && data <= "9") {
+          this.modalData.buffer = (this.modalData.buffer || "") + data;
+          this.render();
+          return;
+        }
+        if (data === "\r" || data === "\n") {
           const sessions = Session.listSessions();
-          const idx = parseInt(this.modalBuffer) - 1;
+          const idx = parseInt(this.modalData.buffer || "0") - 1;
           if (idx >= 0 && idx < sessions.length) {
             const loaded = Session.load(sessions[idx].id);
             if (loaded) {
               this.session = loaded;
               this.messages = loaded.getMessages();
               this.scrollOffset = 0;
-              this.renderAll();
             }
           }
           this.closeModal();
+          this.render();
         }
       }
       closeModal() {
-        if (this.modalBox) {
-          this.modalBox.destroy();
-          this.modalBox = null;
-        }
         this.modal = null;
-        this.modalBuffer = "";
-        this.screen.render();
+        this.modalData = null;
+        this.modalResolve = void 0;
       }
-      // ─── 消息/命令 ─────────────────────────────────────
+      // ─── 消息处理 ─────────────────────────────────────
       async submitInput(input) {
         if (input.startsWith("/")) {
           this.handleCommand(input);
           return;
         }
         this.isLoading = true;
-        this.addMessage("user_input", "user", input);
+        this.addMsg("user_input", "user", input);
         this.scrollOffset = 0;
-        this.renderAll();
+        this.render();
         try {
           await this.orchestrator.processUserInput(input);
         } catch (error) {
           if (error.name !== "AbortError") {
-            this.addMessage("system", "system", `\u9519\u8BEF: ${error.message}`);
+            this.addMsg("system", "system", `\u9519\u8BEF: ${error.message}`);
           }
           this.isLoading = false;
         }
         this.session.save();
-        this.renderStatus();
-        this.renderInput();
+        this.render();
       }
       handleCommand(input) {
         const cmd = input.slice(1).trim().split(" ")[0];
         switch (cmd) {
           case "quit":
           case "exit":
-            this.cleanup();
+            this.restoreTerminal();
             process.exit(0);
             break;
           case "clear":
@@ -1805,13 +1737,15 @@ var init_screen = __esm({
             break;
           case "save":
             this.session.save();
-            this.addMessage("system", "system", "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
+            this.addMsg("system", "system", "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
             break;
           case "sessions":
-            this.showSessionPicker();
+            this.modal = "session";
+            this.modalData = { buffer: "" };
+            this.render();
             return;
           case "help":
-            this.addMessage("system", "system", [
+            this.addMsg("system", "system", [
               "/quit, /exit  \u9000\u51FA",
               "/clear  \u6E05\u5C4F",
               "/reset  \u91CD\u7F6E",
@@ -1823,189 +1757,236 @@ var init_screen = __esm({
             ].join("\n"));
             break;
           default:
-            this.addMessage("system", "system", `\u672A\u77E5\u547D\u4EE4: ${cmd}`);
+            this.addMsg("system", "system", `\u672A\u77E5\u547D\u4EE4: ${cmd}`);
         }
         this.inputBuffer = "";
         this.cursorPos = 0;
-        this.renderAll();
+        this.render();
       }
-      addMessage(type, from, content) {
-        const msg = {
+      addMsg(type, from, content) {
+        this.messages.push({
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type,
           from,
           content,
           timestamp: /* @__PURE__ */ new Date()
-        };
-        this.messages.push(msg);
-        this.session.addMessage(msg);
+        });
+        this.session.addMessage(this.messages[this.messages.length - 1]);
       }
       // ─── Orchestrator ──────────────────────────────────
       bindOrchestrator() {
         this.orchestrator.on("response", (text) => {
-          this.addMessage("agent_message", "orchestrator", text);
+          this.addMsg("agent_message", "orchestrator", text);
           this.isLoading = false;
           this.scrollOffset = 0;
-          this.renderAll();
+          this.render();
         });
         this.orchestrator.on("error", (err) => {
-          this.addMessage("system", "system", `\u9519\u8BEF: ${err.message}`);
+          this.addMsg("system", "system", `\u9519\u8BEF: ${err.message}`);
           this.isLoading = false;
-          this.renderAll();
+          this.render();
         });
         this.orchestrator.on("status_change", () => {
           this.agents = this.orchestrator.getState().agents;
-          this.renderAgents();
-          this.renderStatus();
+          this.render();
         });
       }
-      // ─── 渲染 ───────────────────────────────────────────
-      renderAll() {
-        this.renderStatus();
-        this.renderMessages();
-        this.renderAgents();
-        this.renderInput();
-      }
-      renderStatus() {
-        const tag = this.isLoading ? "{yellow-fg}\u27F3 \u5904\u7406\u4E2D{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
-        this.statusBar.setContent(
-          ` {bold}OpenAgents{/bold} \u2502 ${this.session.getName()} \u2502 ${tag} \u2502 ${this.messages.length}\u6761 \u2502 \u2191\u2193\u6EDA\u52A8 \u2502 /help`
+      // ─── 渲染（ANSI 全量刷新，无闪烁）──────────────
+      render() {
+        const w = this.cols;
+        const h = this.rows;
+        const agW = this.agentPanelWidth;
+        const chatW = w - agW;
+        const lines = [];
+        const statusTag = this.isLoading ? chalk.yellow("\u27F3 \u5904\u7406\u4E2D") : chalk.green("\u5C31\u7EEA");
+        const statusText = ` ${chalk.bold("OpenAgents")} \u2502 ${this.session.getName()} \u2502 ${statusTag} \u2502 ${this.messages.length}\u6761 \u2502 \u2191\u2193\u6EDA\u52A8 \u2502 /help`;
+        lines.push(chalk.bgBlue.white(this.padLine(statusText, w)));
+        const chatAreaH = h - 4;
+        const chatLines = this.buildChatLines(chatW - 2);
+        const agentLines = this.buildAgentLines(agW - 2);
+        const totalChatLines = chatLines.length;
+        const visibleChatStart = Math.max(0, totalChatLines - chatAreaH + this.scrollOffset);
+        const visibleChat = chatLines.slice(visibleChatStart, visibleChatStart + chatAreaH);
+        lines.push(
+          chalk.cyan("\u250C" + "\u2500".repeat(chatW - 2) + "\u2510") + chalk.gray("\u250C" + "\u2500".repeat(agW - 2) + "\u2510")
         );
-        this.screen.render();
+        for (let i = 0; i < chatAreaH - 2; i++) {
+          const chatLine = visibleChat[i] || "";
+          const agentLine = agentLines[i] || "";
+          lines.push(
+            chalk.cyan("\u2502") + this.padLine(chatLine, chatW - 2) + chalk.cyan("\u2502") + chalk.gray("\u2502") + this.padLine(agentLine, agW - 2) + chalk.gray("\u2502")
+          );
+        }
+        lines.push(
+          chalk.cyan("\u2514" + "\u2500".repeat(chatW - 2) + "\u2518") + chalk.gray("\u2514" + "\u2500".repeat(agW - 2) + "\u2518")
+        );
+        const inputW = w - 2;
+        const inputLabel = this.isLoading ? chalk.yellow("\u27F3 ") : chalk.green("> ");
+        const cursor = chalk.inverse(" ");
+        const inputContent = inputLabel + this.inputBuffer + cursor;
+        const padding = " ".repeat(Math.max(0, inputW - this.visibleLength(inputContent) - 1));
+        lines.push(chalk.cyan("\u250C" + "\u2500".repeat(inputW) + "\u2510"));
+        lines.push(chalk.cyan("\u2502") + " " + inputContent + padding + chalk.cyan("\u2502"));
+        lines.push(chalk.cyan("\u2514" + "\u2500".repeat(inputW) + "\u2518"));
+        if (this.modal === "approval") {
+          this.overlayApproval(lines, w, h);
+        } else if (this.modal === "session") {
+          this.overlaySession(lines, w, h);
+        }
+        while (lines.length < h) lines.push(" ".repeat(w));
+        let output = "\x1B[H";
+        for (const line of lines.slice(0, h)) {
+          output += line + "\x1B[K\n";
+        }
+        if (output !== this.lastRender) {
+          process.stdout.write(output);
+          this.lastRender = output;
+        }
       }
-      /** 构建聊天区所有行（纯文本，无 blessed 标签） */
-      buildChatLines() {
+      /** 聊天区内容行（纯文本+chalk颜色） */
+      buildChatLines(maxWidth) {
         const lines = [];
         for (const msg of this.messages) {
           const t = msg.timestamp.toLocaleTimeString();
           let pre;
           switch (msg.type) {
             case "user_input":
-              pre = "[You]";
+              pre = chalk.green.bold("[You]");
               break;
             case "agent_message":
-              pre = "[Agent]";
+              pre = chalk.yellow.bold("[Agent]");
               break;
             case "system":
-              pre = "[!]";
+              pre = chalk.magenta.bold("[!]");
               break;
             default:
-              pre = `[${msg.from}]`;
+              pre = chalk.white(`[${msg.from}]`);
           }
-          lines.push(`${pre} ${t}`);
-          for (const l of msg.content.split("\n")) lines.push(`  ${l}`);
+          lines.push(`${pre} ${chalk.gray(t)}`);
+          for (const l of msg.content.split("\n")) {
+            if (this.visibleLength(l) > maxWidth - 2) {
+              lines.push("  " + this.wrapText(l, maxWidth - 2));
+            } else {
+              lines.push("  " + l);
+            }
+          }
           lines.push("");
         }
         return lines;
       }
-      renderMessages() {
-        const allLines = this.buildChatLines();
-        const visibleRows = this.rows - 4 - 2;
-        const maxOffset = Math.max(0, allLines.length - visibleRows);
-        const start = Math.max(0, allLines.length - visibleRows - this.scrollOffset);
-        const end = start + visibleRows;
-        const visible = allLines.slice(start, end);
-        this.chatBox.setContent(visible.join("\n"));
-        this.screen.render();
-      }
-      renderAgents() {
+      /** Agent 面板内容行 */
+      buildAgentLines(maxWidth) {
         const lines = [];
         for (const a of this.agents) {
           let icon;
           switch (a.status) {
             case "idle":
-              icon = "\u25CB";
+              icon = chalk.gray("\u25CB");
               break;
             case "working":
-              icon = "\u25CF";
+              icon = chalk.green("\u25CF");
               break;
             case "thinking":
-              icon = "\u25D0";
+              icon = chalk.yellow("\u25D0");
               break;
             case "error":
-              icon = "\u2717";
+              icon = chalk.red("\u2717");
               break;
             default:
               icon = "?";
           }
           const name = (a.name || a.type).slice(0, 10);
-          const tk = a.tokenUsage > 0 ? ` ${a.tokenUsage}tk` : "";
+          const tk = a.tokenUsage > 0 ? chalk.gray(` ${a.tokenUsage}tk`) : "";
           lines.push(`${icon} ${name}${tk}`);
           if (a.currentTask) {
-            lines.push(`  ${a.currentTask.description.slice(0, 14)}`);
+            const desc = a.currentTask.description.slice(0, maxWidth - 4);
+            lines.push(chalk.yellow(`  ${desc}`));
           }
         }
-        if (lines.length === 0) lines.push("\u7B49\u5F85\u542F\u52A8...");
-        this.agentBox.setContent(lines.join("\n"));
-        this.screen.render();
+        if (lines.length === 0) lines.push(chalk.gray("\u7B49\u5F85\u542F\u52A8..."));
+        return lines;
       }
-      renderInput() {
-        const pre = this.isLoading ? "\u27F3 " : "> ";
-        this.inputBox.setContent(pre + this.inputBuffer + "\u2588");
-        this.screen.render();
+      // ─── 弹窗渲染 ─────────────────────────────────────
+      overlayApproval(lines, w, h) {
+        const cmd = this.modalData?.command || "";
+        const reason = this.modalData?.reason || "";
+        const boxW = 48;
+        const boxH = reason ? 9 : 7;
+        const startRow = Math.floor((h - boxH) / 2);
+        const startCol = Math.floor((w - boxW) / 2);
+        const boxLines = [
+          chalk.yellow("\u250C" + "\u2500".repeat(boxW - 2) + "\u2510"),
+          chalk.yellow("\u2502") + this.padLine(chalk.yellow.bold(" \u26A0 \u9700\u8981\u5BA1\u6279 "), boxW - 2) + chalk.yellow("\u2502"),
+          chalk.yellow("\u2502") + this.padLine(`  \u5DE5\u5177: ${this.modalData?.tool || ""}`, boxW - 2) + chalk.yellow("\u2502"),
+          chalk.yellow("\u2502") + this.padLine(`  \u547D\u4EE4: ${chalk.red(cmd)}`, boxW - 2) + chalk.yellow("\u2502")
+        ];
+        if (reason) boxLines.push(chalk.yellow("\u2502") + this.padLine(`  \u539F\u56E0: ${reason}`, boxW - 2) + chalk.yellow("\u2502"));
+        boxLines.push(chalk.yellow("\u2502") + " ".repeat(boxW - 2) + chalk.yellow("\u2502"));
+        boxLines.push(chalk.yellow("\u2502") + this.padLine("  Y \u6267\u884C | N \u62D2\u7EDD", boxW - 2) + chalk.yellow("\u2502"));
+        boxLines.push(chalk.yellow("\u2514" + "\u2500".repeat(boxW - 2) + "\u2518"));
+        for (let i = 0; i < boxLines.length; i++) {
+          const row = startRow + i;
+          if (row >= 1 && row < lines.length - 3) {
+            lines[row] = this.overlayString(lines[row], boxLines[i], startCol);
+          }
+        }
       }
-      // ─── 弹窗 ───────────────────────────────────────────
+      overlaySession(lines, w, h) {
+        const sessions = Session.listSessions();
+        const boxW = 50;
+        const boxH = sessions.length + 6;
+        const startRow = Math.floor((h - boxH) / 2);
+        const startCol = Math.floor((w - boxW) / 2);
+        const boxLines = [
+          chalk.cyan("\u250C" + "\u2500".repeat(boxW - 2) + "\u2510"),
+          chalk.cyan("\u2502") + this.padLine(chalk.bold(" \u5386\u53F2\u4F1A\u8BDD (\u8F93\u5165\u7F16\u53F7, q\u53D6\u6D88) "), boxW - 2) + chalk.cyan("\u2502")
+        ];
+        for (let i = 0; i < sessions.length; i++) {
+          const s = sessions[i];
+          const d = new Date(s.updatedAt).toLocaleString();
+          const entry = `  ${i + 1}. ${s.name} (${s.messages.length}\u6761)`;
+          boxLines.push(chalk.cyan("\u2502") + this.padLine(entry, boxW - 2) + chalk.cyan("\u2502"));
+        }
+        boxLines.push(chalk.cyan("\u2502") + " ".repeat(boxW - 2) + chalk.cyan("\u2502"));
+        const buffer = this.modalData?.buffer || "";
+        boxLines.push(chalk.cyan("\u2502") + this.padLine(`  \u8F93\u5165: ${buffer}_`, boxW - 2) + chalk.cyan("\u2502"));
+        boxLines.push(chalk.cyan("\u2514" + "\u2500".repeat(boxW - 2) + "\u2518"));
+        for (let i = 0; i < boxLines.length; i++) {
+          const row = startRow + i;
+          if (row >= 1 && row < lines.length - 3) {
+            lines[row] = this.overlayString(lines[row], boxLines[i], startCol);
+          }
+        }
+      }
+      // ─── 工具函数 ─────────────────────────────────────
+      /** 填充行到指定宽度 */
+      padLine(text, width) {
+        const vl = this.visibleLength(text);
+        if (vl >= width) return text.slice(0, width);
+        return text + " ".repeat(width - vl);
+      }
+      /** 计算 chalk 格式化后的可见长度 */
+      visibleLength(text) {
+        return text.replace(/\x1b\[[0-9;]*m/g, "").length;
+      }
+      /** 简单换行 */
+      wrapText(text, maxWidth) {
+        if (this.visibleLength(text) <= maxWidth) return text;
+        return text.slice(0, maxWidth) + "\u2026";
+      }
+      /** 在原始行的指定位置覆盖弹窗行 */
+      overlayString(base, overlay, col) {
+        const baseVisible = this.visibleLength(base);
+        const overlayVisible = this.visibleLength(overlay);
+        return overlay;
+      }
       showApproval(tool, params) {
         return new Promise((resolve2) => {
-          const cmd = params.command || "";
-          const reason = params.reason || "";
-          const content = [
-            "",
-            `  \u5DE5\u5177: ${tool}`,
-            `  \u547D\u4EE4: ${cmd}`,
-            reason ? `  \u539F\u56E0: ${reason}` : "",
-            "",
-            "  Y \u6267\u884C | N \u62D2\u7EDD"
-          ].filter(Boolean).join("\n");
           this.modal = "approval";
           this.modalResolve = resolve2;
-          this.modalBox = blessed.box({
-            parent: this.screen,
-            top: "center",
-            left: "center",
-            width: 50,
-            height: reason ? 10 : 8,
-            label: " \u26A0 \u5BA1\u6279 ",
-            border: { type: "double" },
-            tags: false,
-            style: { border: { fg: "yellow" }, label: { fg: "yellow" } },
-            content
-          });
-          this.screen.render();
+          this.modalData = { tool, command: params.command || "", reason: params.reason || "" };
+          this.render();
         });
-      }
-      showSessionPicker() {
-        const sessions = Session.listSessions();
-        if (sessions.length === 0) {
-          this.addMessage("system", "system", "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD");
-          this.renderMessages();
-          return;
-        }
-        const lines = sessions.map((s, i) => {
-          const d = new Date(s.updatedAt).toLocaleString();
-          return `  ${i + 1}. ${s.name} (${s.messages.length}\u6761, ${d})`;
-        });
-        this.modal = "session";
-        this.modalBuffer = "";
-        this.modalBox = blessed.box({
-          parent: this.screen,
-          top: "center",
-          left: "center",
-          width: 55,
-          height: sessions.length + 6,
-          label: " \u5386\u53F2\u4F1A\u8BDD (\u7F16\u53F7\u9009\u62E9, q\u53D6\u6D88) ",
-          border: { type: "line" },
-          tags: false,
-          style: { border: { fg: "cyan" }, label: { fg: "cyan" } },
-          content: "\n" + lines.join("\n")
-        });
-        this.screen.render();
-      }
-      cleanup() {
-        this.screen.destroy();
-      }
-      render() {
-        this.screen.render();
       }
     };
   }
@@ -2371,7 +2352,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.5.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.0.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
@@ -2487,12 +2468,7 @@ async function startApp(sessionName, resumeSessionId) {
       return;
     }
     const { Screen: Screen2 } = await Promise.resolve().then(() => (init_screen(), screen_exports));
-    const screen = new Screen2({
-      config,
-      sessionName,
-      resumeSessionId
-    });
-    screen.render();
+    new Screen2({ config, sessionName, resumeSessionId });
   } catch (error) {
     console.error("\u542F\u52A8\u5931\u8D25:", error.message);
     process.exit(1);

@@ -40,12 +40,7 @@ async function startApp(sessionName?: string, resumeSessionId?: string) {
 
     // 使用 blessed 全屏渲染（不闪烁）
     const { Screen } = await import('./tui/screen.js');
-    const screen = new Screen({
-      config,
-      sessionName,
-      resumeSessionId,
-    });
-    screen.render();
+    new Screen({ config, sessionName, resumeSessionId });
   } catch (error) {
     console.error('启动失败:', (error as Error).message);
     process.exit(1);
