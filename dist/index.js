@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -10,15 +8,6 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/config/schema.ts
 import { z } from "zod";
@@ -60,11 +49,6 @@ var init_schema = __esm({
 });
 
 // src/config/defaults.ts
-var defaults_exports = {};
-__export(defaults_exports, {
-  DEFAULT_CONFIG: () => DEFAULT_CONFIG,
-  getDefaultConfig: () => getDefaultConfig
-});
 function getDefaultConfig() {
   return {
     providers: [],
@@ -531,69 +515,100 @@ var init_InputBar = __esm({
   }
 });
 
-// src/core/message-bus.ts
-import { EventEmitter } from "events";
-var MessageBus, messageBus;
-var init_message_bus = __esm({
-  "src/core/message-bus.ts"() {
+// src/tui/components/ApprovalDialog.tsx
+import React5 from "react";
+import { Box as Box5, Text as Text5 } from "ink";
+import { useInput } from "ink";
+function ApprovalDialog({ tool, params, onApprove, onDeny }) {
+  return /* @__PURE__ */ React5.createElement(
+    Box5,
+    {
+      flexDirection: "column",
+      borderStyle: "double",
+      borderColor: "yellow",
+      paddingX: 1,
+      marginBottom: 1
+    },
+    /* @__PURE__ */ React5.createElement(Text5, { bold: true, color: "yellow" }, "\u26A0\uFE0F \u547D\u4EE4\u9700\u8981\u5BA1\u6279"),
+    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u5DE5\u5177: "), /* @__PURE__ */ React5.createElement(Text5, { bold: true }, tool)),
+    params.command && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u547D\u4EE4: "), /* @__PURE__ */ React5.createElement(Text5, { color: "red" }, params.command)),
+    params.reason && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u539F\u56E0: "), /* @__PURE__ */ React5.createElement(Text5, null, params.reason)),
+    params.path && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u8DEF\u5F84: "), /* @__PURE__ */ React5.createElement(Text5, null, params.path)),
+    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, null, "\u6309 ", /* @__PURE__ */ React5.createElement(Text5, { color: "green", bold: true }, "Y"), " \u6267\u884C | \u6309 ", /* @__PURE__ */ React5.createElement(Text5, { color: "red", bold: true }, "N"), " \u62D2\u7EDD")),
+    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, { color: "gray", dimColor: true }, "\u63D0\u793A: \u4F7F\u7528\u952E\u76D8\u8F93\u5165 y \u6216 n")),
+    /* @__PURE__ */ React5.createElement(ApprovalKeyListener, { onApprove, onDeny })
+  );
+}
+function ApprovalKeyListener({ onApprove, onDeny }) {
+  useInput((input) => {
+    if (input.toLowerCase() === "y") {
+      onApprove();
+    } else if (input.toLowerCase() === "n") {
+      onDeny();
+    }
+  });
+  return null;
+}
+var init_ApprovalDialog = __esm({
+  "src/tui/components/ApprovalDialog.tsx"() {
     "use strict";
-    MessageBus = class extends EventEmitter {
-      history = [];
-      maxHistory;
-      constructor(maxHistory = 1e3) {
-        super();
-        this.maxHistory = maxHistory;
+  }
+});
+
+// src/tui/components/SessionPicker.tsx
+import React6, { useState as useState2, useEffect } from "react";
+import { Box as Box6, Text as Text6, useInput as useInput2 } from "ink";
+function SessionPicker({ onSelect, onCancel }) {
+  const [sessions, setSessions] = useState2([]);
+  const [selectedIndex, setSelectedIndex] = useState2(0);
+  useEffect(() => {
+    const list = Session.listSessions();
+    setSessions(list);
+  }, []);
+  useInput2((input, key) => {
+    if (key.upArrow || input === "k") {
+      setSelectedIndex((prev) => Math.max(0, prev - 1));
+    } else if (key.downArrow || input === "j") {
+      setSelectedIndex((prev) => Math.min(sessions.length - 1, prev + 1));
+    } else if (key.return) {
+      if (sessions[selectedIndex]) {
+        onSelect(sessions[selectedIndex].id);
       }
-      publish(message) {
-        const fullMessage = {
-          ...message,
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          timestamp: /* @__PURE__ */ new Date()
-        };
-        this.history.push(fullMessage);
-        if (this.history.length > this.maxHistory) {
-          this.history.shift();
-        }
-        this.emit("message", fullMessage);
-        this.emit(fullMessage.type, fullMessage);
-        if (fullMessage.to) {
-          this.emit(`to:${fullMessage.to}`, fullMessage);
-        }
-        return fullMessage;
+    } else if (key.escape || input === "q") {
+      onCancel();
+    } else if (input === "d") {
+      if (sessions[selectedIndex]) {
+        Session.deleteSession(sessions[selectedIndex].id);
+        const newList = Session.listSessions();
+        setSessions(newList);
+        setSelectedIndex((prev) => Math.min(prev, newList.length - 1));
       }
-      subscribe(handler) {
-        this.on("message", handler);
-        return () => this.off("message", handler);
-      }
-      subscribeToType(type, handler) {
-        this.on(type, handler);
-        return () => this.off(type, handler);
-      }
-      subscribeToAgent(agentId, handler) {
-        this.on(`to:${agentId}`, handler);
-        return () => this.off(`to:${agentId}`, handler);
-      }
-      getHistory(limit) {
-        if (limit) {
-          return this.history.slice(-limit);
-        }
-        return [...this.history];
-      }
-      clearHistory() {
-        this.history = [];
-      }
-    };
-    messageBus = new MessageBus();
+    }
+  });
+  if (sessions.length === 0) {
+    return /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React6.createElement(Text6, { bold: true, color: "cyan" }, "\u5386\u53F2\u4F1A\u8BDD"), /* @__PURE__ */ React6.createElement(Box6, { marginTop: 1 }, /* @__PURE__ */ React6.createElement(Text6, { color: "gray" }, "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD\u3002\u6309 Esc \u8FD4\u56DE\u3002")));
+  }
+  return /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React6.createElement(Text6, { bold: true, color: "cyan" }, "\u5386\u53F2\u4F1A\u8BDD"), /* @__PURE__ */ React6.createElement(Text6, { color: "gray", dimColor: true }, "\u2191\u2193 \u9009\u62E9 | Enter \u6253\u5F00 | d \u5220\u9664 | Esc \u8FD4\u56DE"), /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", marginTop: 1 }, sessions.map((session, index) => {
+    const isSelected = index === selectedIndex;
+    const date = new Date(session.updatedAt).toLocaleString();
+    const msgCount = session.messages.length;
+    return /* @__PURE__ */ React6.createElement(Box6, { key: session.id }, /* @__PURE__ */ React6.createElement(Text6, { color: isSelected ? "cyan" : "white" }, isSelected ? "\u25B6 " : "  ", session.name), /* @__PURE__ */ React6.createElement(Text6, { color: "gray", dimColor: true }, " ", "(", msgCount, " \u6761\u6D88\u606F, ", date, ")"));
+  })));
+}
+var init_SessionPicker = __esm({
+  "src/tui/components/SessionPicker.tsx"() {
+    "use strict";
+    init_session();
   }
 });
 
 // src/core/shared-context.ts
-import { EventEmitter as EventEmitter2 } from "events";
+import { EventEmitter } from "events";
 var SharedContext, sharedContext;
 var init_shared_context = __esm({
   "src/core/shared-context.ts"() {
     "use strict";
-    SharedContext = class extends EventEmitter2 {
+    SharedContext = class extends EventEmitter {
       entries = [];
       workspace = /* @__PURE__ */ new Map();
       maxEntries;
@@ -693,46 +708,61 @@ var init_shared_context = __esm({
 import { execSync } from "child_process";
 import * as fs3 from "fs";
 import * as path3 from "path";
+import * as os2 from "os";
 function registerTool(tool) {
   tools.set(tool.name, tool);
 }
 function getToolsDescription() {
-  let desc = "\u4F60\u53EF\u4EE5\u4F7F\u7528\u4EE5\u4E0B\u5DE5\u5177:\n\n";
-  for (const [name, tool] of tools) {
-    desc += `## ${name}
-${tool.description}
-\u53C2\u6570:
-`;
-    for (const [paramName, param] of Object.entries(tool.parameters)) {
-      desc += `  - ${paramName}: ${param.description}${param.required ? " (\u5FC5\u586B)" : " (\u53EF\u9009)"}
-`;
-    }
-    desc += "\n";
-  }
-  desc += `\u8C03\u7528\u5DE5\u5177\u7684\u683C\u5F0F:
+  let desc = `\u4F60\u53EF\u4EE5\u4F7F\u7528\u4EE5\u4E0B\u5DE5\u5177\u6765\u5B8C\u6210\u4EFB\u52A1\u3002\u5DE5\u5177\u8C03\u7528\u683C\u5F0F:
+
 \`\`\`tool_call
 {"tool": "\u5DE5\u5177\u540D", "params": {"\u53C2\u6570\u540D": "\u53C2\u6570\u503C"}}
 \`\`\`
 
-\u4F60\u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u5DE5\u5177\u8C03\u7528\u7528\u5355\u72EC\u7684\u4EE3\u7801\u5757\u3002`;
+\u53EF\u7528\u5DE5\u5177:
+
+`;
+  for (const [name, tool] of tools) {
+    desc += `- **${name}**: ${tool.description}${tool.dangerous ? " [\u9700\u8981\u5BA1\u6279]" : ""}
+`;
+  }
+  desc += `
+\u6CE8\u610F\u4E8B\u9879:
+1. Windows \u548C Linux \u547D\u4EE4\u4E0D\u540C\uFF0C\u8BF7\u6839\u636E\u7CFB\u7EDF\u9009\u62E9\u5408\u9002\u7684\u547D\u4EE4
+2. \u4F7F\u7528 get_system_info \u83B7\u53D6\u7CFB\u7EDF\u4FE1\u606F
+3. \u6267\u884C\u547D\u4EE4\u65F6\u6CE8\u610F\u8DEF\u5F84\u5206\u9694\u7B26\uFF08Windows\u7528\\\uFF0CLinux\u7528/\uFF09
+4. \u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u7528\u5355\u72EC\u7684 \`\`\`tool_call \u4EE3\u7801\u5757
+5. \u5DE5\u5177\u6267\u884C\u7ED3\u679C\u4F1A\u81EA\u52A8\u6298\u53E0\uFF0C\u4F60\u9700\u8981\u603B\u7ED3\u7ED3\u679C\u7ED9\u7528\u6237`;
   return desc;
 }
 function parseToolCalls(content) {
   const calls = [];
-  const regex = /```tool_call\s*\n({[\s\S]*?})\s*\n```/g;
+  const regex = /```tool_call\s*\n([\s\S]*?)\n```/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     try {
-      const parsed = JSON.parse(match[1]);
+      const cleaned = match[1].trim();
+      const parsed = JSON.parse(cleaned);
       if (parsed.tool && parsed.params) {
         calls.push(parsed);
       }
     } catch {
+      try {
+        const cleaned = match[1].trim().replace(/'/g, '"').replace(/(\w+):/g, '"$1":');
+        const parsed = JSON.parse(cleaned);
+        if (parsed.tool) {
+          calls.push({ tool: parsed.tool, params: parsed.params || {} });
+        }
+      } catch {
+      }
     }
   }
   return calls;
 }
-async function executeToolCalls(calls) {
+function isDangerousCommand(command) {
+  return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
+}
+async function executeToolCalls(calls, approveCallback) {
   const results = [];
   for (const call of calls) {
     const tool = tools.get(call.tool);
@@ -740,34 +770,107 @@ async function executeToolCalls(calls) {
       results.push({ tool: call.tool, success: false, output: `\u5DE5\u5177\u4E0D\u5B58\u5728: ${call.tool}` });
       continue;
     }
+    const needsApproval = tool.dangerous || call.tool === "execute_command" && isDangerousCommand(call.params.command || "");
+    if (needsApproval && approveCallback) {
+      const approved = await approveCallback(call.tool, call.params);
+      if (!approved) {
+        results.push({ tool: call.tool, success: false, output: "\u7528\u6237\u62D2\u7EDD\u6267\u884C\u6B64\u547D\u4EE4" });
+        continue;
+      }
+    }
     try {
       const output = await tool.execute(call.params);
-      results.push({ tool: call.tool, success: true, output });
+      results.push({
+        tool: call.tool,
+        success: true,
+        output,
+        folded: output.length > 200
+        // 长输出折叠
+      });
     } catch (error) {
       results.push({ tool: call.tool, success: false, output: error.message });
     }
   }
   return results;
 }
-var executeCommandTool, readFileTool, writeFileTool, listDirTool, createDirTool, existsTool, deleteFileTool, tools;
+function formatToolResultsForUser(results) {
+  if (results.length === 0) return "";
+  let text = "";
+  for (const result of results) {
+    const status = result.success ? "\u2713" : "\u2717";
+    text += `${status} ${result.tool}`;
+    if (result.folded) {
+      text += ` (${result.output.length} \u5B57\u7B26\uFF0C\u5DF2\u6298\u53E0)
+`;
+    } else if (result.output.length < 100) {
+      text += `: ${result.output}
+`;
+    } else {
+      text += `: ${result.output.slice(0, 100)}...
+`;
+    }
+  }
+  return text;
+}
+function formatToolResultsForAgent(results) {
+  let text = "## \u5DE5\u5177\u6267\u884C\u7ED3\u679C\n\n";
+  for (const result of results) {
+    text += `### ${result.tool} ${result.success ? "(\u6210\u529F)" : "(\u5931\u8D25)"}
+`;
+    text += "```\n" + result.output + "\n```\n\n";
+  }
+  text += "\u8BF7\u6839\u636E\u4EE5\u4E0A\u5DE5\u5177\u6267\u884C\u7ED3\u679C\uFF0C\u7528\u7B80\u6D01\u7684\u8BED\u8A00\u603B\u7ED3\u7ED9\u7528\u6237\u3002";
+  return text;
+}
+var isWindows, executeCommandTool, executeDangerousCommandTool, readFileTool, writeFileTool, listDirTool, createDirTool, getSystemInfoTool, getCwdTool, tools, DANGEROUS_PATTERNS;
 var init_tools = __esm({
   "src/tools/index.ts"() {
     "use strict";
+    isWindows = os2.platform() === "win32";
     executeCommandTool = {
       name: "execute_command",
-      description: "\u6267\u884C shell \u547D\u4EE4\uFF08Linux/Windows\uFF09",
+      description: "\u6267\u884C shell \u547D\u4EE4",
       parameters: {
         command: { type: "string", description: "\u8981\u6267\u884C\u7684\u547D\u4EE4", required: true },
         cwd: { type: "string", description: "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u53EF\u9009\uFF09" }
       },
       execute: async (params) => {
         try {
-          const options = { encoding: "utf-8", timeout: 3e4 };
+          const options = {
+            encoding: "utf-8",
+            timeout: 3e4,
+            maxBuffer: 1024 * 1024
+          };
           if (params.cwd) options.cwd = params.cwd;
           const result = execSync(params.command, options);
-          return result.toString();
+          return result.toString().slice(0, 5e3);
         } catch (error) {
-          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${error.message}`;
+          const err = error;
+          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${err.stderr || err.message || "\u672A\u77E5\u9519\u8BEF"}`;
+        }
+      }
+    };
+    executeDangerousCommandTool = {
+      name: "execute_dangerous_command",
+      description: "\u6267\u884C\u53EF\u80FD\u6709\u98CE\u9669\u7684\u547D\u4EE4\uFF08\u5220\u9664\u3001\u8986\u76D6\u7B49\uFF09\uFF0C\u9700\u8981\u7528\u6237\u786E\u8BA4",
+      dangerous: true,
+      parameters: {
+        command: { type: "string", description: "\u8981\u6267\u884C\u7684\u547D\u4EE4", required: true },
+        reason: { type: "string", description: "\u4E3A\u4EC0\u4E48\u9700\u8981\u6267\u884C\u8FD9\u4E2A\u547D\u4EE4", required: true },
+        cwd: { type: "string", description: "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u53EF\u9009\uFF09" }
+      },
+      execute: async (params) => {
+        try {
+          const options = {
+            encoding: "utf-8",
+            timeout: 3e4
+          };
+          if (params.cwd) options.cwd = params.cwd;
+          const result = execSync(params.command, options);
+          return result.toString().slice(0, 5e3);
+        } catch (error) {
+          const err = error;
+          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${err.stderr || err.message || "\u672A\u77E5\u9519\u8BEF"}`;
         }
       }
     };
@@ -775,14 +878,14 @@ var init_tools = __esm({
       name: "read_file",
       description: "\u8BFB\u53D6\u6587\u4EF6\u5185\u5BB9",
       parameters: {
-        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true },
-        encoding: { type: "string", description: "\u7F16\u7801\uFF08\u9ED8\u8BA4 utf-8\uFF09" }
+        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true }
       },
       execute: async (params) => {
         try {
           const filePath = path3.resolve(params.path);
           if (!fs3.existsSync(filePath)) return `\u6587\u4EF6\u4E0D\u5B58\u5728: ${filePath}`;
-          return fs3.readFileSync(filePath, params.encoding || "utf-8");
+          const content = fs3.readFileSync(filePath, "utf-8");
+          return content.length > 5e3 ? content.slice(0, 5e3) + "\n...(\u5185\u5BB9\u5DF2\u622A\u65AD)" : content;
         } catch (error) {
           return `\u8BFB\u53D6\u5931\u8D25: ${error.message}`;
         }
@@ -790,7 +893,8 @@ var init_tools = __esm({
     };
     writeFileTool = {
       name: "write_file",
-      description: "\u5199\u5165\u6587\u4EF6\u5185\u5BB9\uFF08\u4F1A\u521B\u5EFA\u76EE\u5F55\uFF09",
+      description: "\u5199\u5165\u6587\u4EF6\u5185\u5BB9\uFF08\u4F1A\u81EA\u52A8\u521B\u5EFA\u76EE\u5F55\uFF09",
+      dangerous: true,
       parameters: {
         path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true },
         content: { type: "string", description: "\u6587\u4EF6\u5185\u5BB9", required: true }
@@ -801,7 +905,7 @@ var init_tools = __esm({
           const dir = path3.dirname(filePath);
           if (!fs3.existsSync(dir)) fs3.mkdirSync(dir, { recursive: true });
           fs3.writeFileSync(filePath, params.content, "utf-8");
-          return `\u6587\u4EF6\u5DF2\u5199\u5165: ${filePath}`;
+          return `\u6587\u4EF6\u5DF2\u5199\u5165: ${filePath} (${params.content.length} \u5B57\u8282)`;
         } catch (error) {
           return `\u5199\u5165\u5931\u8D25: ${error.message}`;
         }
@@ -811,31 +915,14 @@ var init_tools = __esm({
       name: "list_directory",
       description: "\u5217\u51FA\u76EE\u5F55\u5185\u5BB9",
       parameters: {
-        path: { type: "string", description: "\u76EE\u5F55\u8DEF\u5F84", required: true },
-        recursive: { type: "string", description: "\u662F\u5426\u9012\u5F52\uFF08true/false\uFF09" }
+        path: { type: "string", description: "\u76EE\u5F55\u8DEF\u5F84", required: true }
       },
       execute: async (params) => {
         try {
           const dirPath = path3.resolve(params.path);
           if (!fs3.existsSync(dirPath)) return `\u76EE\u5F55\u4E0D\u5B58\u5728: ${dirPath}`;
-          if (params.recursive === "true") {
-            const files = [];
-            const walk = (dir) => {
-              const entries = fs3.readdirSync(dir, { withFileTypes: true });
-              for (const entry of entries) {
-                const fullPath = path3.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                  walk(fullPath);
-                } else {
-                  files.push(fullPath);
-                }
-              }
-            };
-            walk(dirPath);
-            return files.join("\n");
-          } else {
-            return fs3.readdirSync(dirPath).join("\n");
-          }
+          const entries = fs3.readdirSync(dirPath, { withFileTypes: true });
+          return entries.map((e) => `${e.isDirectory() ? "[DIR]" : "[FILE]"} ${e.name}`).join("\n");
         } catch (error) {
           return `\u5217\u51FA\u5931\u8D25: ${error.message}`;
         }
@@ -857,49 +944,56 @@ var init_tools = __esm({
         }
       }
     };
-    existsTool = {
-      name: "check_exists",
-      description: "\u68C0\u67E5\u6587\u4EF6\u6216\u76EE\u5F55\u662F\u5426\u5B58\u5728",
-      parameters: {
-        path: { type: "string", description: "\u8DEF\u5F84", required: true }
-      },
-      execute: async (params) => {
-        const p = path3.resolve(params.path);
-        const exists = fs3.existsSync(p);
-        const stat = exists ? fs3.statSync(p) : null;
+    getSystemInfoTool = {
+      name: "get_system_info",
+      description: "\u83B7\u53D6\u5F53\u524D\u7CFB\u7EDF\u4FE1\u606F\uFF08OS\u3001CPU\u3001\u5185\u5B58\u7B49\uFF09",
+      parameters: {},
+      execute: async () => {
         return JSON.stringify({
-          exists,
-          isFile: stat?.isFile() || false,
-          isDirectory: stat?.isDirectory() || false,
-          size: stat?.size || 0
-        });
+          platform: os2.platform(),
+          arch: os2.arch(),
+          release: os2.release(),
+          hostname: os2.hostname(),
+          cpus: os2.cpus().length,
+          totalMemory: `${Math.round(os2.totalmem() / 1024 / 1024 / 1024)} GB`,
+          freeMemory: `${Math.round(os2.freemem() / 1024 / 1024 / 1024)} GB`,
+          homeDir: os2.homedir(),
+          cwd: process.cwd(),
+          nodeVersion: process.version
+        }, null, 2);
       }
     };
-    deleteFileTool = {
-      name: "delete_file",
-      description: "\u5220\u9664\u6587\u4EF6",
-      parameters: {
-        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true }
-      },
-      execute: async (params) => {
-        try {
-          const filePath = path3.resolve(params.path);
-          if (!fs3.existsSync(filePath)) return `\u6587\u4EF6\u4E0D\u5B58\u5728: ${filePath}`;
-          fs3.unlinkSync(filePath);
-          return `\u6587\u4EF6\u5DF2\u5220\u9664: ${filePath}`;
-        } catch (error) {
-          return `\u5220\u9664\u5931\u8D25: ${error.message}`;
-        }
-      }
+    getCwdTool = {
+      name: "get_cwd",
+      description: "\u83B7\u53D6\u5F53\u524D\u5DE5\u4F5C\u76EE\u5F55",
+      parameters: {},
+      execute: async () => process.cwd()
     };
     tools = /* @__PURE__ */ new Map();
     registerTool(executeCommandTool);
+    registerTool(executeDangerousCommandTool);
     registerTool(readFileTool);
     registerTool(writeFileTool);
     registerTool(listDirTool);
     registerTool(createDirTool);
-    registerTool(existsTool);
-    registerTool(deleteFileTool);
+    registerTool(getSystemInfoTool);
+    registerTool(getCwdTool);
+    DANGEROUS_PATTERNS = [
+      /\brm\s+(-rf?|--recursive)/i,
+      /\bdel\s+\/[sf]/i,
+      /\brmdir\s+\/s/i,
+      /\bformat\b/i,
+      /\bmkfs\b/i,
+      /\bdd\s+if=/i,
+      /\bshutdown\b/i,
+      /\breboot\b/i,
+      /\bkill\s+-9\b/i,
+      /\btaskkill\b/i,
+      /\breg\s+delete\b/i,
+      /\bnet\s+user\b.*\/add/i,
+      /\bchmod\s+777\b/i,
+      />\s*\/dev\/sd[a-z]/i
+    ];
   }
 });
 
@@ -909,7 +1003,6 @@ var BaseAgent;
 var init_base_agent = __esm({
   "src/agents/base-agent.ts"() {
     "use strict";
-    init_message_bus();
     init_shared_context();
     init_tools();
     BaseAgent = class {
@@ -924,17 +1017,17 @@ var init_base_agent = __esm({
       tasks = [];
       tokenUsage = 0;
       useTools = true;
+      approveCallback;
       constructor(name, type, config, llm) {
         this.id = `agent-${type}-${uuidv42().slice(0, 8)}`;
         this.name = name;
         this.type = type;
         this.config = config;
         this.llm = llm;
-        messageBus.subscribeToAgent(this.id, (msg) => this.handleMessage(msg));
       }
-      handleMessage(message) {
+      setApproveCallback(callback) {
+        this.approveCallback = callback;
       }
-      // 获取带工具描述的 system prompt
       getFullSystemPrompt() {
         let prompt = this.getSystemPrompt();
         if (this.useTools) {
@@ -962,12 +1055,6 @@ var init_base_agent = __esm({
           type: "task",
           content: taskDescription
         });
-        messageBus.publish({
-          type: "agent_status",
-          from: this.id,
-          content: `${this.name} \u5F00\u59CB\u5904\u7406: ${taskDescription.slice(0, 100)}`,
-          metadata: { agentId: this.id, taskId: task.id }
-        });
         try {
           const messages = [
             { role: "system", content: this.getFullSystemPrompt() },
@@ -984,27 +1071,37 @@ var init_base_agent = __esm({
             }
           );
           this.tokenUsage += response.usage?.total_tokens || 0;
-          let finalContent = response.content;
+          let mainContent = response.content;
+          let toolSummary = "";
+          let toolResultsForUser = "";
           if (this.useTools) {
             const toolCalls = parseToolCalls(response.content);
             if (toolCalls.length > 0) {
-              const results = await executeToolCalls(toolCalls);
-              const toolResultsText = this.formatToolResults(results);
-              finalContent += "\n\n" + toolResultsText;
-              sharedContext.addEntry({
-                agentId: this.id,
-                agentName: this.name,
-                type: "info",
-                content: toolResultsText
-              });
+              const results = await executeToolCalls(toolCalls, this.approveCallback);
+              toolResultsForUser = formatToolResultsForUser(results);
+              const toolResultsForAgent = formatToolResultsForAgent(results);
+              const summaryMessages = [
+                { role: "system", content: "\u4F60\u662F\u52A9\u624B\uFF0C\u8BF7\u6839\u636E\u5DE5\u5177\u6267\u884C\u7ED3\u679C\u7528\u7B80\u6D01\u7684\u4E2D\u6587\u603B\u7ED3\u3002\u4E0D\u8981\u91CD\u590D\u5DE5\u5177\u539F\u59CB\u8F93\u51FA\uFF0C\u53EA\u8BF4\u7ED3\u8BBA\u3002" },
+                { role: "user", content: `\u7528\u6237\u8BF7\u6C42: ${taskDescription}
+
+${toolResultsForAgent}` }
+              ];
+              const summaryResponse = await this.llm.chat(
+                this.config.provider,
+                this.config.model,
+                summaryMessages,
+                { temperature: 0.3, max_tokens: 1e3 }
+              );
+              toolSummary = summaryResponse.content;
+              mainContent = mainContent.replace(/```tool_call[\s\S]*?```/g, "").trim();
             }
           }
           this.conversationHistory.push(
             { role: "user", content: taskDescription },
-            { role: "assistant", content: finalContent }
+            { role: "assistant", content: mainContent }
           );
           task.status = "completed";
-          task.result = finalContent;
+          task.result = mainContent;
           task.completedAt = /* @__PURE__ */ new Date();
           this.currentTask = void 0;
           this.setStatus("idle");
@@ -1012,100 +1109,13 @@ var init_base_agent = __esm({
             agentId: this.id,
             agentName: this.name,
             type: "result",
-            content: finalContent
+            content: toolSummary || mainContent
           });
-          messageBus.publish({
-            type: "task_completed",
-            from: this.id,
-            content: finalContent,
-            metadata: { agentId: this.id, taskId: task.id }
-          });
-          return finalContent;
-        } catch (error) {
-          task.status = "failed";
-          task.result = error.message;
-          this.currentTask = void 0;
-          this.setStatus("error");
-          messageBus.publish({
-            type: "task_failed",
-            from: this.id,
-            content: `\u4EFB\u52A1\u5931\u8D25: ${error.message}`,
-            metadata: { agentId: this.id, taskId: task.id }
-          });
-          throw error;
-        }
-      }
-      async streamTask(taskDescription, onToken) {
-        const task = {
-          id: `task-${uuidv42().slice(0, 8)}`,
-          description: taskDescription,
-          status: "in_progress",
-          assignedAt: /* @__PURE__ */ new Date()
-        };
-        this.currentTask = task;
-        this.tasks.push(task);
-        this.setStatus("working");
-        sharedContext.addEntry({
-          agentId: this.id,
-          agentName: this.name,
-          type: "task",
-          content: taskDescription
-        });
-        try {
-          const messages = [
-            { role: "system", content: this.getFullSystemPrompt() },
-            ...this.conversationHistory,
-            { role: "user", content: taskDescription }
-          ];
-          let fullContent = "";
-          await this.llm.streamChat(
-            this.config.provider,
-            this.config.model,
-            messages,
-            {
-              onToken: (token) => {
-                fullContent += token;
-                onToken(token);
-              },
-              onComplete: (response) => {
-                this.tokenUsage += response.usage?.total_tokens || 0;
-              }
-            },
-            {
-              temperature: this.config.temperature,
-              max_tokens: this.config.max_tokens
-            }
-          );
-          if (this.useTools) {
-            const toolCalls = parseToolCalls(fullContent);
-            if (toolCalls.length > 0) {
-              const results = await executeToolCalls(toolCalls);
-              const toolResultsText = this.formatToolResults(results);
-              fullContent += "\n\n" + toolResultsText;
-              sharedContext.addEntry({
-                agentId: this.id,
-                agentName: this.name,
-                type: "info",
-                content: toolResultsText
-              });
-            }
-          }
-          this.conversationHistory.push(
-            { role: "user", content: taskDescription },
-            { role: "assistant", content: fullContent }
-          );
-          task.status = "completed";
-          task.result = fullContent;
-          task.completedAt = /* @__PURE__ */ new Date();
-          this.currentTask = void 0;
-          this.setStatus("idle");
-          sharedContext.addEntry({
-            agentId: this.id,
-            agentName: this.name,
-            type: "result",
-            content: fullContent
-          });
-          return fullContent;
+          return {
+            content: mainContent,
+            toolResults: toolResultsForUser,
+            toolSummary
+          };
         } catch (error) {
           task.status = "failed";
           task.result = error.message;
@@ -1113,16 +1123,6 @@ var init_base_agent = __esm({
           this.setStatus("error");
           throw error;
         }
-      }
-      formatToolResults(results) {
-        let text = "### \u5DE5\u5177\u6267\u884C\u7ED3\u679C\n\n";
-        for (const result of results) {
-          const status = result.success ? "\u2705" : "\u274C";
-          text += `${status} **${result.tool}**
-`;
-          text += "```\n" + result.output.slice(0, 1e3) + "\n```\n\n";
-        }
-        return text;
       }
       getState() {
         return {
@@ -1310,6 +1310,62 @@ var init_agents = __esm({
   }
 });
 
+// src/core/message-bus.ts
+import { EventEmitter as EventEmitter2 } from "events";
+var MessageBus, messageBus;
+var init_message_bus = __esm({
+  "src/core/message-bus.ts"() {
+    "use strict";
+    MessageBus = class extends EventEmitter2 {
+      history = [];
+      maxHistory;
+      constructor(maxHistory = 1e3) {
+        super();
+        this.maxHistory = maxHistory;
+      }
+      publish(message) {
+        const fullMessage = {
+          ...message,
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: /* @__PURE__ */ new Date()
+        };
+        this.history.push(fullMessage);
+        if (this.history.length > this.maxHistory) {
+          this.history.shift();
+        }
+        this.emit("message", fullMessage);
+        this.emit(fullMessage.type, fullMessage);
+        if (fullMessage.to) {
+          this.emit(`to:${fullMessage.to}`, fullMessage);
+        }
+        return fullMessage;
+      }
+      subscribe(handler) {
+        this.on("message", handler);
+        return () => this.off("message", handler);
+      }
+      subscribeToType(type, handler) {
+        this.on(type, handler);
+        return () => this.off(type, handler);
+      }
+      subscribeToAgent(agentId, handler) {
+        this.on(`to:${agentId}`, handler);
+        return () => this.off(`to:${agentId}`, handler);
+      }
+      getHistory(limit) {
+        if (limit) {
+          return this.history.slice(-limit);
+        }
+        return [...this.history];
+      }
+      clearHistory() {
+        this.history = [];
+      }
+    };
+    messageBus = new MessageBus();
+  }
+});
+
 // src/core/orchestrator.ts
 import { EventEmitter as EventEmitter3 } from "events";
 var Orchestrator;
@@ -1328,11 +1384,18 @@ var init_orchestrator = __esm({
       currentPlan;
       completedTasks = 0;
       totalTasks = 0;
+      approveCallback;
       constructor(config, llm) {
         super();
         this.config = config;
         this.llm = llm;
         this.initializeAgents();
+      }
+      setApproveCallback(callback) {
+        this.approveCallback = callback;
+        for (const agent of this.agents.values()) {
+          agent.setApproveCallback(callback);
+        }
       }
       initializeAgents() {
         const plannerConfig = this.config.agents["planner"];
@@ -1385,27 +1448,24 @@ var init_orchestrator = __esm({
             break;
         }
       }
-      // 智能分类用户输入
       categorizeInput(input) {
         const lower = input.toLowerCase().trim();
         const simplePatterns = [
-          /^你是谁/,
-          /^你能做什么/,
-          /^你能干什么/,
+          /^你是/,
+          /^你能/,
           /^介绍一下/,
-          /^what can you/,
-          /^who are you/,
+          /^what/i,
+          /^who/i,
           /^help$/i,
           /^帮助$/,
           /^你好/,
           /^hello/i,
           /^hi$/i,
-          /^嗨/,
           /^什么意思/,
           /^什么是/,
           /^怎么理解/
         ];
-        if (input.length < 30 && simplePatterns.some((p) => p.test(lower))) {
+        if (input.length < 50 && simplePatterns.some((p) => p.test(lower))) {
           return "simple_question";
         }
         const discussionPatterns = [
@@ -1416,54 +1476,47 @@ var init_orchestrator = __esm({
           /建议/,
           /推荐/,
           /比较.*和/,
-          /优缺点/,
-          /what do you think/,
-          /opinion/,
-          /compare/
+          /优缺点/
         ];
         if (discussionPatterns.some((p) => p.test(lower))) {
           return "discussion";
         }
-        const complexIndicators = [
-          input.length > 150,
-          /然后.*接着/.test(lower),
-          /首先.*然后.*最后/.test(lower),
-          /创建.*项目.*并且.*配置/.test(lower),
-          /搭建.*包含.*以及/.test(lower),
-          /实现.*功能.*同时.*需要/.test(lower)
-        ];
-        if (complexIndicators.some(Boolean)) {
+        if (input.length > 200 || /首先.*然后.*最后/.test(lower) || /创建.*项目.*配置/.test(lower)) {
           return "complex_task";
         }
         return "direct_task";
       }
-      // 简单问题：直接用第一个 agent 回答
       async handleSimpleQuestion(input) {
         this.setStatus("executing");
         const agent = this.findBestAgent("answer");
         if (!agent) return;
         try {
-          const response = await agent.processTask(input);
-          this.emit("response", response);
+          const result = await agent.processTask(input);
+          this.emit("response", result.content);
         } catch (error) {
           this.emit("error", error);
         }
         this.setStatus("idle");
       }
-      // 直接任务：交给最合适的 agent
       async handleDirectTask(input) {
         this.setStatus("executing");
         const agent = this.findBestAgentForTask(input);
         if (!agent) return;
         try {
-          const response = await agent.processTask(input);
-          this.emit("response", response);
+          const result = await agent.processTask(input);
+          let output = result.content;
+          if (result.toolResults) {
+            output += "\n\n---\n" + result.toolResults;
+          }
+          if (result.toolSummary) {
+            output += "\n\n**\u603B\u7ED3:** " + result.toolSummary;
+          }
+          this.emit("response", output);
         } catch (error) {
           this.emit("error", error);
         }
         this.setStatus("idle");
       }
-      // 复杂任务：分解并协作
       async handleComplexTask(input) {
         this.setStatus("planning");
         try {
@@ -1471,34 +1524,25 @@ var init_orchestrator = __esm({
           this.currentPlan = plan;
           this.totalTasks = plan.tasks.length;
           this.completedTasks = 0;
-          messageBus.publish({
-            type: "system",
-            from: "orchestrator",
-            content: `\u4EFB\u52A1\u5DF2\u5206\u89E3\u4E3A ${plan.tasks.length} \u4E2A\u5B50\u4EFB\u52A1`,
-            metadata: { plan }
-          });
           this.setStatus("executing");
-          await this.executePlan(plan);
+          const results = await this.executePlan(plan);
           this.setStatus("summarizing");
-          const summary = this.generateSummary(plan);
+          const summary = this.generateSummary(plan, results);
           this.emit("response", summary);
         } catch (error) {
           this.emit("error", error);
         }
         this.setStatus("idle");
       }
-      // 讨论模式：多个 agent 各自回答
       async handleDiscussion(input) {
         this.setStatus("executing");
         const responses = [];
         const activeAgents = Array.from(this.agents.values()).filter((a) => a.type !== "planner").slice(0, 2);
         for (const agent of activeAgents) {
           try {
-            const response = await agent.processTask(
-              `\u7528\u6237\u63D0\u95EE: "${input}"
-\u8BF7\u4ECE\u4F60\u7684\u4E13\u4E1A\u89D2\u5EA6\u56DE\u7B54\u3002`
-            );
-            responses.push(`**${agent.name}**: ${response}`);
+            const result = await agent.processTask(`\u7528\u6237\u63D0\u95EE: "${input}"
+\u8BF7\u4ECE\u4F60\u7684\u4E13\u4E1A\u89D2\u5EA6\u56DE\u7B54\u3002`);
+            responses.push(`**${agent.name}**: ${result.content}`);
             this.completedTasks++;
           } catch {
           }
@@ -1506,13 +1550,12 @@ var init_orchestrator = __esm({
         this.emit("response", responses.join("\n\n---\n\n"));
         this.setStatus("idle");
       }
-      // 根据任务内容找最合适的 agent
       findBestAgentForTask(input) {
         const lower = input.toLowerCase();
-        if (/代码|编程|函数|bug|修复|实现|写.*代码|创建.*文件|编写/.test(lower)) {
+        if (/代码|编程|函数|bug|修复|实现|写|创建|文件|脚本/.test(lower)) {
           return this.findAgentByType("coder");
         }
-        if (/审查|review|检查.*代码|优化/.test(lower)) {
+        if (/审查|review|检查|优化/.test(lower)) {
           return this.findAgentByType("reviewer");
         }
         if (/调研|研究|分析|对比|选型/.test(lower)) {
@@ -1531,68 +1574,59 @@ var init_orchestrator = __esm({
       }
       async executePlan(plan) {
         const executed = /* @__PURE__ */ new Set();
+        const allResults = [];
         while (executed.size < plan.tasks.length) {
           const readyTasks = plan.tasks.filter(
             (task) => !executed.has(task.id) && task.dependencies.every((dep) => executed.has(dep))
           );
           if (readyTasks.length === 0) break;
-          const chunks = this.chunk(readyTasks, this.config.orchestrator.max_concurrent_agents);
-          for (const chunk of chunks) {
-            await Promise.all(chunk.map(async (task) => {
-              const agent = this.findAgentByType(task.assignee) || this.findBestAgent("general");
-              if (!agent) {
-                executed.add(task.id);
-                return;
-              }
-              try {
-                const contextInfo = sharedContext.buildContextSummary(agent.id);
-                const taskWithContext = contextInfo.length > 50 ? `${task.description}
+          for (const task of readyTasks) {
+            const agent = this.findAgentByType(task.assignee) || this.findBestAgent("general");
+            if (!agent) {
+              executed.add(task.id);
+              continue;
+            }
+            try {
+              const contextInfo = sharedContext.buildContextSummary(agent.id);
+              const taskWithContext = contextInfo.length > 50 ? `${task.description}
 
 ${contextInfo}` : task.description;
-                await agent.processTask(taskWithContext);
-                executed.add(task.id);
-                this.completedTasks++;
-                this.emit("task_complete", task);
-              } catch {
-                executed.add(task.id);
-              }
-            }));
+              const result = await agent.processTask(taskWithContext);
+              allResults.push(result);
+              executed.add(task.id);
+              this.completedTasks++;
+              this.emit("task_complete", task);
+            } catch {
+              executed.add(task.id);
+            }
           }
         }
+        return allResults;
       }
-      generateSummary(plan) {
+      generateSummary(plan, results) {
         const agentStates = Array.from(this.agents.values()).map((a) => a.getState());
         const totalTokens = agentStates.reduce((sum, s) => sum + s.tokenUsage, 0);
-        const latestOutputs = sharedContext.getLatestOutputs();
-        let resultsSection = "";
-        for (const [agentId, output] of latestOutputs) {
-          const agent = this.agents.get(agentId);
-          if (agent) {
-            resultsSection += `
-### ${agent.name}
-${output.slice(0, 500)}${output.length > 500 ? "..." : ""}
+        let output = `## \u4EFB\u52A1\u5B8C\u6210
+
 `;
+        output += `- \u4EFB\u52A1\u6570: ${this.totalTasks} | Token: ${totalTokens}
+
+`;
+        for (const result of results) {
+          if (result.toolSummary) {
+            output += result.toolSummary + "\n\n";
+          } else if (result.content) {
+            output += result.content.slice(0, 300) + "\n\n";
           }
         }
-        return `## \u4EFB\u52A1\u5B8C\u6210
-
-**\u6267\u884C\u6458\u8981:**
-- \u603B\u4EFB\u52A1\u6570: ${this.totalTasks}
-- \u5DF2\u5B8C\u6210: ${this.completedTasks}
-- \u4F7F\u7528 Agent: ${agentStates.filter((s) => s.messageCount > 0).length}
-- Token \u7528\u91CF: ${totalTokens}
-
-**\u5404 Agent \u8F93\u51FA:**
-${resultsSection}
-
-${plan.summary}`;
-      }
-      chunk(array, size) {
-        const chunks = [];
-        for (let i = 0; i < array.length; i += size) {
-          chunks.push(array.slice(i, i + size));
+        const foldedResults = results.filter((r) => r.toolResults);
+        if (foldedResults.length > 0) {
+          output += "---\n**\u5DE5\u5177\u6267\u884C\u8BE6\u60C5 (\u6298\u53E0):**\n";
+          for (const r of foldedResults) {
+            output += r.toolResults + "\n";
+          }
         }
-        return chunks;
+        return output;
       }
       setStatus(status) {
         this.status = status;
@@ -1728,87 +1762,100 @@ var App_exports = {};
 __export(App_exports, {
   App: () => App
 });
-import React5, { useState as useState2, useEffect, useCallback, useRef } from "react";
-import { Box as Box5, useApp, useInput } from "ink";
-function App({ config, sessionName }) {
+import React7, { useState as useState3, useEffect as useEffect2, useCallback, useRef } from "react";
+import { Box as Box7, useApp, useInput as useInput3 } from "ink";
+function App({ config, sessionName, resumeSessionId }) {
   const { exit } = useApp();
-  const [messages, setMessages] = useState2([]);
-  const [agents, setAgents] = useState2([]);
-  const [isLoading, setIsLoading] = useState2(false);
-  const [orchestrator, setOrchestrator] = useState2(null);
-  const [session, setSession] = useState2(null);
-  const [activePanel, setActivePanel] = useState2("chat");
+  const [messages, setMessages] = useState3([]);
+  const [agents, setAgents] = useState3([]);
+  const [isLoading, setIsLoading] = useState3(false);
+  const [activePanel, setActivePanel] = useState3("chat");
+  const [showApproval, setShowApproval] = useState3(false);
+  const [approvalInfo, setApprovalInfo] = useState3(null);
+  const [showSessionPicker, setShowSessionPicker] = useState3(false);
   const orchestratorRef = useRef(null);
   const sessionRef = useRef(null);
   const messagesRef = useRef([]);
-  useEffect(() => {
+  const lastMessageCountRef = useRef(0);
+  useEffect2(() => {
     const llm = new LLMClient(config.providers);
     const orch = new Orchestrator(config, llm);
-    const sess = new Session(sessionName);
+    orch.setApproveCallback((tool, params) => {
+      return new Promise((resolve2) => {
+        setApprovalInfo({ tool, params, resolve: resolve2 });
+        setShowApproval(true);
+      });
+    });
+    let sess;
+    if (resumeSessionId) {
+      const loaded = Session.load(resumeSessionId);
+      if (loaded) {
+        sess = loaded;
+        messagesRef.current = loaded.getMessages();
+        setMessages([...messagesRef.current]);
+      } else {
+        sess = new Session(sessionName);
+      }
+    } else {
+      sess = new Session(sessionName);
+    }
     orchestratorRef.current = orch;
     sessionRef.current = sess;
-    setOrchestrator(orch);
-    setSession(sess);
-    const unsubscribe = messageBus.subscribe((message) => {
-      messagesRef.current = [...messagesRef.current, message];
-      sess.addMessage(message);
-    });
     orch.on("response", (response) => {
-      const responseMessage = {
-        id: `msg-${Date.now()}`,
+      const msg = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type: "agent_message",
         from: "orchestrator",
         content: response,
         timestamp: /* @__PURE__ */ new Date()
       };
-      messagesRef.current = [...messagesRef.current, responseMessage];
+      messagesRef.current = [...messagesRef.current, msg];
       setMessages([...messagesRef.current]);
       setIsLoading(false);
+      sess.addMessage(msg);
     });
     orch.on("error", (error) => {
-      const errorMessage = {
-        id: `msg-${Date.now()}`,
+      const msg = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type: "system",
         from: "system",
         content: `\u9519\u8BEF: ${error.message}`,
         timestamp: /* @__PURE__ */ new Date()
       };
-      messagesRef.current = [...messagesRef.current, errorMessage];
+      messagesRef.current = [...messagesRef.current, msg];
       setMessages([...messagesRef.current]);
       setIsLoading(false);
     });
     orch.on("status_change", () => {
-      setAgents(orch.getState().agents);
+      setAgents([...orch.getState().agents]);
     });
+    const timer = setInterval(() => {
+      if (orch) {
+        const newAgents = orch.getState().agents;
+        setAgents((prev) => {
+          if (JSON.stringify(prev) !== JSON.stringify(newAgents)) {
+            return [...newAgents];
+          }
+          return prev;
+        });
+      }
+    }, 1e3);
     return () => {
-      unsubscribe();
+      clearInterval(timer);
       orch.removeAllListeners();
     };
-  }, [config, sessionName]);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (messagesRef.current.length !== messages.length) {
-        setMessages([...messagesRef.current]);
-      }
-      if (orchestratorRef.current) {
-        const newAgents = orchestratorRef.current.getState().agents;
-        if (JSON.stringify(newAgents) !== JSON.stringify(agents)) {
-          setAgents(newAgents);
-        }
-      }
-    }, 500);
-    return () => clearInterval(timer);
-  }, [messages.length, agents]);
+  }, [config, sessionName, resumeSessionId]);
   const handleInput = useCallback(async (input) => {
     if (!orchestratorRef.current || !sessionRef.current) return;
     if (input.trim() === "") return;
+    if (isLoading) return;
     if (input.startsWith("/")) {
       handleCommand(input);
       return;
     }
     setIsLoading(true);
     const userMessage = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: "user_input",
       from: "user",
       content: input,
@@ -1816,11 +1863,12 @@ function App({ config, sessionName }) {
     };
     messagesRef.current = [...messagesRef.current, userMessage];
     setMessages([...messagesRef.current]);
+    sessionRef.current.addMessage(userMessage);
     try {
       await orchestratorRef.current.processUserInput(input);
     } catch (error) {
       const errorMessage = {
-        id: `msg-${Date.now()}`,
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type: "system",
         from: "system",
         content: `\u9519\u8BEF: ${error.message}`,
@@ -1828,13 +1876,12 @@ function App({ config, sessionName }) {
       };
       messagesRef.current = [...messagesRef.current, errorMessage];
       setMessages([...messagesRef.current]);
-    } finally {
       setIsLoading(false);
-      if (config.sessions.auto_save) {
-        sessionRef.current.save();
-      }
     }
-  }, [config]);
+    if (config.sessions.auto_save) {
+      sessionRef.current.save();
+    }
+  }, [isLoading, config]);
   const handleCommand = useCallback((input) => {
     const cmd = input.slice(1).trim().split(" ")[0];
     switch (cmd) {
@@ -1854,40 +1901,58 @@ function App({ config, sessionName }) {
         break;
       case "save":
         sessionRef.current?.save();
+        addSystemMessage("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
         break;
       case "agents":
         setActivePanel((prev) => prev === "agents" ? "chat" : "agents");
         break;
+      case "sessions":
+        setShowSessionPicker(true);
+        break;
       case "help":
-        const helpMessage = {
-          id: `msg-${Date.now()}`,
-          type: "system",
-          from: "system",
-          content: `\u53EF\u7528\u547D\u4EE4:
+        addSystemMessage(`\u53EF\u7528\u547D\u4EE4:
 /quit, /exit    - \u9000\u51FA\u7A0B\u5E8F
 /clear          - \u6E05\u5C4F
 /reset          - \u91CD\u7F6E\u6240\u6709 Agent
 /save           - \u4FDD\u5B58\u4F1A\u8BDD
 /agents         - \u5207\u6362 Agent \u9762\u677F
-/help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`,
-          timestamp: /* @__PURE__ */ new Date()
-        };
-        messagesRef.current = [...messagesRef.current, helpMessage];
-        setMessages([...messagesRef.current]);
+/sessions       - \u9009\u62E9\u5386\u53F2\u4F1A\u8BDD
+/help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`);
         break;
       default:
-        const unknownCmd = {
-          id: `msg-${Date.now()}`,
-          type: "system",
-          from: "system",
-          content: `\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u53EF\u7528\u547D\u4EE4\u3002`,
-          timestamp: /* @__PURE__ */ new Date()
-        };
-        messagesRef.current = [...messagesRef.current, unknownCmd];
-        setMessages([...messagesRef.current]);
+        addSystemMessage(`\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u53EF\u7528\u547D\u4EE4\u3002`);
     }
   }, [exit]);
-  useInput((input, key) => {
+  const addSystemMessage = (content) => {
+    const msg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: "system",
+      from: "system",
+      content,
+      timestamp: /* @__PURE__ */ new Date()
+    };
+    messagesRef.current = [...messagesRef.current, msg];
+    setMessages([...messagesRef.current]);
+  };
+  const handleApproval = (approved) => {
+    if (approvalInfo) {
+      approvalInfo.resolve(approved);
+      setShowApproval(false);
+      setApprovalInfo(null);
+    }
+  };
+  const handleSessionSelect = (sessionId) => {
+    setShowSessionPicker(false);
+    const loaded = Session.load(sessionId);
+    if (loaded) {
+      sessionRef.current = loaded;
+      messagesRef.current = loaded.getMessages();
+      setMessages([...messagesRef.current]);
+      addSystemMessage(`\u5DF2\u5207\u6362\u5230\u4F1A\u8BDD: ${loaded.getName()}`);
+    }
+  };
+  useInput3((input, key) => {
+    if (showApproval || showSessionPicker) return;
     if (key.ctrl && input === "c") {
       sessionRef.current?.save();
       exit();
@@ -1896,32 +1961,49 @@ function App({ config, sessionName }) {
       setActivePanel((prev) => prev === "agents" ? "chat" : "agents");
     }
   });
-  return /* @__PURE__ */ React5.createElement(Box5, { flexDirection: "column", height: "100%" }, /* @__PURE__ */ React5.createElement(
+  if (showSessionPicker) {
+    return /* @__PURE__ */ React7.createElement(
+      SessionPicker,
+      {
+        onSelect: handleSessionSelect,
+        onCancel: () => setShowSessionPicker(false)
+      }
+    );
+  }
+  return /* @__PURE__ */ React7.createElement(Box7, { flexDirection: "column", height: "100%" }, /* @__PURE__ */ React7.createElement(
     Header,
     {
-      sessionName: session?.getName() || "\u672A\u547D\u540D",
+      sessionName: sessionRef.current?.getName() || "\u672A\u547D\u540D",
       agentCount: agents.length,
       messageCount: messages.length
     }
-  ), /* @__PURE__ */ React5.createElement(Box5, { flexDirection: "row", flexGrow: 1 }, /* @__PURE__ */ React5.createElement(
+  ), /* @__PURE__ */ React7.createElement(Box7, { flexDirection: "row", flexGrow: 1 }, /* @__PURE__ */ React7.createElement(
     ChatPanel,
     {
       messages,
       isLoading,
       active: activePanel === "chat"
     }
-  ), /* @__PURE__ */ React5.createElement(
+  ), /* @__PURE__ */ React7.createElement(
     AgentStatusPanel,
     {
       agents,
       active: activePanel === "agents"
     }
-  )), /* @__PURE__ */ React5.createElement(
+  )), showApproval && approvalInfo && /* @__PURE__ */ React7.createElement(
+    ApprovalDialog,
+    {
+      tool: approvalInfo.tool,
+      params: approvalInfo.params,
+      onApprove: () => handleApproval(true),
+      onDeny: () => handleApproval(false)
+    }
+  ), /* @__PURE__ */ React7.createElement(
     InputBar,
     {
       onSubmit: handleInput,
       isLoading,
-      disabled: isLoading
+      disabled: showApproval
     }
   ));
 }
@@ -1932,10 +2014,11 @@ var init_App = __esm({
     init_ChatPanel();
     init_AgentStatus();
     init_InputBar();
+    init_ApprovalDialog();
+    init_SessionPicker();
     init_orchestrator();
     init_session();
     init_client();
-    init_message_bus();
   }
 });
 
@@ -2300,7 +2383,15 @@ async function runUninstall() {
 function createCommands() {
   const program2 = new Command();
   program2.name("openagents").description("Terminal multi-agent collaboration tool").version("1.0.0");
-  program2.command("start", { isDefault: true }).description("Start an interactive session").option("-n, --name <name>", "Session name").action(async (options) => {
+  program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
+  });
+  program2.command("resume").description("Resume the most recent session").action(async () => {
+    const sessions = Session.listSessions();
+    if (sessions.length === 0) {
+      console.log("\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD\u3002");
+      return;
+    }
+    process.env.OPENAGENTS_RESUME_ID = sessions[0].id;
   });
   const configCmd = program2.command("config").description("Manage configuration");
   configCmd.command("init").description("Interactive configuration setup").option("-f, --force", "Force overwrite existing configuration").action(async (options) => {
@@ -2325,23 +2416,6 @@ function createCommands() {
   configCmd.command("path").description("Show configuration file path").action(() => {
     console.log(getConfigPath());
   });
-  configCmd.command("reset").description("Reset configuration to defaults").action(async () => {
-    const readline2 = await import("readline");
-    const rl2 = readline2.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    rl2.question("\u786E\u8BA4\u91CD\u7F6E\u914D\u7F6E\uFF1F(y/N): ", (answer) => {
-      if (answer.toLowerCase() === "y") {
-        const { getDefaultConfig: getDefaultConfig2 } = (init_defaults(), __toCommonJS(defaults_exports));
-        saveConfig(getDefaultConfig2());
-        console.log("\u914D\u7F6E\u5DF2\u91CD\u7F6E\u4E3A\u9ED8\u8BA4\u503C\u3002");
-      } else {
-        console.log("\u64CD\u4F5C\u5DF2\u53D6\u6D88\u3002");
-      }
-      rl2.close();
-    });
-  });
   const sessionCmd = program2.command("session").description("Manage sessions");
   sessionCmd.command("list").description("List all sessions").action(() => {
     const sessions = Session.listSessions();
@@ -2351,10 +2425,10 @@ function createCommands() {
     }
     console.log("\u4FDD\u5B58\u7684\u4F1A\u8BDD:\n");
     sessions.forEach((s, i) => {
+      const date = new Date(s.updatedAt).toLocaleString();
       console.log(`${i + 1}. ${s.name}`);
       console.log(`   ID: ${s.id}`);
-      console.log(`   \u66F4\u65B0\u65F6\u95F4: ${new Date(s.updatedAt).toLocaleString()}`);
-      console.log(`   \u6D88\u606F\u6570: ${s.messages.length}`);
+      console.log(`   \u66F4\u65B0: ${date} | \u6D88\u606F: ${s.messages.length} \u6761`);
       console.log();
     });
   });
@@ -2387,10 +2461,8 @@ function createCommands() {
     console.log("\u914D\u7F6E\u7684 Agent:\n");
     for (const [name, agentConfig] of Object.entries(config.agents)) {
       console.log(`- ${name}`);
-      console.log(`  Provider: ${agentConfig.provider}`);
-      console.log(`  Model: ${agentConfig.model}`);
-      console.log(`  Temperature: ${agentConfig.temperature}`);
-      console.log(`  Enabled: ${agentConfig.enabled}`);
+      console.log(`  Provider: ${agentConfig.provider} | Model: ${agentConfig.model}`);
+      console.log(`  Temperature: ${agentConfig.temperature} | Enabled: ${agentConfig.enabled}`);
       console.log();
     }
   });
@@ -2405,14 +2477,14 @@ var program = createCommands();
 program.commands.forEach((cmd) => {
   if (cmd.name() === "start") {
     cmd.action(async (options) => {
-      await startApp(options.name);
+      await startApp(options.name, options.resume);
     });
   }
 });
 program.action(async () => {
   await startApp();
 });
-async function startApp(sessionName) {
+async function startApp(sessionName, resumeSessionId) {
   try {
     if (!configExists()) {
       console.log("\u6B22\u8FCE\u4F7F\u7528 OpenAgents\uFF01\u9996\u6B21\u4F7F\u7528\u9700\u8981\u914D\u7F6E API Provider\u3002\n");
@@ -2425,11 +2497,11 @@ async function startApp(sessionName) {
       console.log('\u8BF7\u8FD0\u884C "openagents config init" \u8FDB\u884C\u914D\u7F6E\u3002');
       return;
     }
-    const React6 = await import("react");
+    const React8 = await import("react");
     const { render } = await import("ink");
     const { App: App2 } = await Promise.resolve().then(() => (init_App(), App_exports));
     const { waitUntilExit } = render(
-      React6.createElement(App2, { config, sessionName })
+      React8.createElement(App2, { config, sessionName, resumeSessionId })
     );
     await waitUntilExit();
   } catch (error) {

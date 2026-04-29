@@ -2,8 +2,6 @@ import { Command } from 'commander';
 import { loadConfig, saveConfig, configExists, getConfigPath } from '../config/loader.js';
 import { Session } from '../core/session.js';
 import { runSetup, runUninstall } from './setup.js';
-import * as yaml from 'js-yaml';
-import * as fs from 'fs';
 
 export function createCommands(): Command {
   const program = new Command();
@@ -13,16 +11,31 @@ export function createCommands(): Command {
     .description('Terminal multi-agent collaboration tool')
     .version('1.0.0');
 
-  // 默认命令：启动交互式会话
+  // 启动命令
   program
-    .command('start', { isDefault: true })
+    .command('start')
     .description('Start an interactive session')
     .option('-n, --name <name>', 'Session name')
+    .option('-r, --resume <id>', 'Resume a session by ID')
     .action(async (options) => {
       // 由 index.ts 处理
     });
 
-  // 配置相关命令
+  // 快速恢复最近会话
+  program
+    .command('resume')
+    .description('Resume the most recent session')
+    .action(async () => {
+      const sessions = Session.listSessions();
+      if (sessions.length === 0) {
+        console.log('没有保存的会话。');
+        return;
+      }
+      // 设置 resume ID，由 index.ts 处理
+      process.env.OPENAGENTS_RESUME_ID = sessions[0].id;
+    });
+
+  // 配置命令
   const configCmd = program
     .command('config')
     .description('Manage configuration');
@@ -45,7 +58,6 @@ export function createCommands(): Command {
     .description('Show current configuration')
     .action(() => {
       const config = loadConfig();
-      // 隐藏 API Key
       const safeConfig = {
         ...config,
         providers: config.providers.map(p => ({
@@ -63,28 +75,7 @@ export function createCommands(): Command {
       console.log(getConfigPath());
     });
 
-  configCmd
-    .command('reset')
-    .description('Reset configuration to defaults')
-    .action(async () => {
-      const readline = await import('readline');
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      rl.question('确认重置配置？(y/N): ', (answer) => {
-        if (answer.toLowerCase() === 'y') {
-          const { getDefaultConfig } = require('../config/defaults.js');
-          saveConfig(getDefaultConfig());
-          console.log('配置已重置为默认值。');
-        } else {
-          console.log('操作已取消。');
-        }
-        rl.close();
-      });
-    });
-
-  // 会话相关命令
+  // 会话命令
   const sessionCmd = program
     .command('session')
     .description('Manage sessions');
@@ -100,10 +91,10 @@ export function createCommands(): Command {
       }
       console.log('保存的会话:\n');
       sessions.forEach((s, i) => {
+        const date = new Date(s.updatedAt).toLocaleString();
         console.log(`${i + 1}. ${s.name}`);
         console.log(`   ID: ${s.id}`);
-        console.log(`   更新时间: ${new Date(s.updatedAt).toLocaleString()}`);
-        console.log(`   消息数: ${s.messages.length}`);
+        console.log(`   更新: ${date} | 消息: ${s.messages.length} 条`);
         console.log();
       });
     });
@@ -140,7 +131,7 @@ export function createCommands(): Command {
       });
     });
 
-  // Agent 相关命令
+  // Agent 命令
   program
     .command('agents')
     .description('List available agents')
@@ -149,10 +140,8 @@ export function createCommands(): Command {
       console.log('配置的 Agent:\n');
       for (const [name, agentConfig] of Object.entries(config.agents)) {
         console.log(`- ${name}`);
-        console.log(`  Provider: ${agentConfig.provider}`);
-        console.log(`  Model: ${agentConfig.model}`);
-        console.log(`  Temperature: ${agentConfig.temperature}`);
-        console.log(`  Enabled: ${agentConfig.enabled}`);
+        console.log(`  Provider: ${agentConfig.provider} | Model: ${agentConfig.model}`);
+        console.log(`  Temperature: ${agentConfig.temperature} | Enabled: ${agentConfig.enabled}`);
         console.log();
       }
     });

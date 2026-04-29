@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import type { AppConfig } from '../config/schema.js';
 import type { LLMClient } from '../llm/client.js';
 import { PlannerAgent, CoderAgent, ReviewerAgent, ResearcherAgent, CustomAgent } from '../agents/index.js';
-import type { BaseAgent, AgentState } from '../agents/index.js';
+import type { BaseAgent, AgentState, AgentTaskResult, ApproveCallback } from '../agents/index.js';
 import type { TaskPlan } from '../agents/planner.js';
 import { messageBus } from './message-bus.js';
 import { sharedContext } from './shared-context.js';
@@ -17,7 +17,6 @@ export interface OrchestratorState {
   totalTasks: number;
 }
 
-// 输入类型判断
 type InputCategory = 'simple_question' | 'direct_task' | 'complex_task' | 'discussion';
 
 export class Orchestrator extends EventEmitter {
@@ -29,12 +28,20 @@ export class Orchestrator extends EventEmitter {
   private currentPlan?: TaskPlan;
   private completedTasks: number = 0;
   private totalTasks: number = 0;
+  private approveCallback?: ApproveCallback;
 
   constructor(config: AppConfig, llm: LLMClient) {
     super();
     this.config = config;
     this.llm = llm;
     this.initializeAgents();
+  }
+
+  setApproveCallback(callback: ApproveCallback): void {
+    this.approveCallback = callback;
+    for (const agent of this.agents.values()) {
+      agent.setApproveCallback(callback);
+    }
   }
 
   private initializeAgents(): void {
@@ -77,7 +84,6 @@ export class Orchestrator extends EventEmitter {
       content: input,
     });
 
-    // 智能分类输入
     this.setStatus('routing');
     const category = this.categorizeInput(input);
 
@@ -97,82 +103,71 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
-  // 智能分类用户输入
   private categorizeInput(input: string): InputCategory {
     const lower = input.toLowerCase().trim();
 
-    // 简单问题特征：短、问号结尾、询问能力/身份
     const simplePatterns = [
-      /^你是谁/, /^你能做什么/, /^你能干什么/, /^介绍一下/,
-      /^what can you/, /^who are you/, /^help$/i, /^帮助$/,
-      /^你好/, /^hello/i, /^hi$/i, /^嗨/,
+      /^你是/, /^你能/, /^介绍一下/, /^what/i, /^who/i,
+      /^help$/i, /^帮助$/, /^你好/, /^hello/i, /^hi$/i,
       /^什么意思/, /^什么是/, /^怎么理解/,
     ];
 
-    if (input.length < 30 && simplePatterns.some(p => p.test(lower))) {
+    if (input.length < 50 && simplePatterns.some(p => p.test(lower))) {
       return 'simple_question';
     }
 
-    // 讨论特征：征求意见、看法
     const discussionPatterns = [
       /你觉得/, /你认为/, /怎么看/, /有什么看法/,
       /建议/, /推荐/, /比较.*和/, /优缺点/,
-      /what do you think/, /opinion/, /compare/,
     ];
 
     if (discussionPatterns.some(p => p.test(lower))) {
       return 'discussion';
     }
 
-    // 复杂任务特征：长文本、多个步骤、包含"和"、"然后"、"接着"
-    const complexIndicators = [
-      input.length > 150,
-      /然后.*接着/.test(lower),
-      /首先.*然后.*最后/.test(lower),
-      /创建.*项目.*并且.*配置/.test(lower),
-      /搭建.*包含.*以及/.test(lower),
-      /实现.*功能.*同时.*需要/.test(lower),
-    ];
-
-    if (complexIndicators.some(Boolean)) {
+    if (input.length > 200 || /首先.*然后.*最后/.test(lower) || /创建.*项目.*配置/.test(lower)) {
       return 'complex_task';
     }
 
-    // 直接任务特征：明确的指令
     return 'direct_task';
   }
 
-  // 简单问题：直接用第一个 agent 回答
   private async handleSimpleQuestion(input: string): Promise<void> {
     this.setStatus('executing');
     const agent = this.findBestAgent('answer');
     if (!agent) return;
 
     try {
-      const response = await agent.processTask(input);
-      this.emit('response', response);
+      const result = await agent.processTask(input);
+      this.emit('response', result.content);
     } catch (error) {
       this.emit('error', error);
     }
     this.setStatus('idle');
   }
 
-  // 直接任务：交给最合适的 agent
   private async handleDirectTask(input: string): Promise<void> {
     this.setStatus('executing');
     const agent = this.findBestAgentForTask(input);
     if (!agent) return;
 
     try {
-      const response = await agent.processTask(input);
-      this.emit('response', response);
+      const result = await agent.processTask(input);
+      // 组合输出：主体内容 + 工具结果折叠 + 工具总结
+      let output = result.content;
+      if (result.toolResults) {
+        output += '\n\n---\n' + result.toolResults;
+      }
+      if (result.toolSummary) {
+        output += '\n\n**总结:** ' + result.toolSummary;
+      }
+      this.emit('response', output);
     } catch (error) {
       this.emit('error', error);
     }
     this.setStatus('idle');
   }
 
-  // 复杂任务：分解并协作
   private async handleComplexTask(input: string): Promise<void> {
     this.setStatus('planning');
 
@@ -182,41 +177,29 @@ export class Orchestrator extends EventEmitter {
       this.totalTasks = plan.tasks.length;
       this.completedTasks = 0;
 
-      messageBus.publish({
-        type: 'system',
-        from: 'orchestrator',
-        content: `任务已分解为 ${plan.tasks.length} 个子任务`,
-        metadata: { plan },
-      });
-
       this.setStatus('executing');
-      await this.executePlan(plan);
+      const results = await this.executePlan(plan);
 
       this.setStatus('summarizing');
-      const summary = this.generateSummary(plan);
-
+      const summary = this.generateSummary(plan, results);
       this.emit('response', summary);
     } catch (error) {
       this.emit('error', error);
     }
-
     this.setStatus('idle');
   }
 
-  // 讨论模式：多个 agent 各自回答
   private async handleDiscussion(input: string): Promise<void> {
     this.setStatus('executing');
     const responses: string[] = [];
     const activeAgents = Array.from(this.agents.values())
       .filter(a => a.type !== 'planner')
-      .slice(0, 2); // 限制 2 个 agent 参与讨论
+      .slice(0, 2);
 
     for (const agent of activeAgents) {
       try {
-        const response = await agent.processTask(
-          `用户提问: "${input}"\n请从你的专业角度回答。`
-        );
-        responses.push(`**${agent.name}**: ${response}`);
+        const result = await agent.processTask(`用户提问: "${input}"\n请从你的专业角度回答。`);
+        responses.push(`**${agent.name}**: ${result.content}`);
         this.completedTasks++;
       } catch {
         // 忽略单个 agent 失败
@@ -227,26 +210,17 @@ export class Orchestrator extends EventEmitter {
     this.setStatus('idle');
   }
 
-  // 根据任务内容找最合适的 agent
   private findBestAgentForTask(input: string): BaseAgent | undefined {
     const lower = input.toLowerCase();
-
-    // 代码相关
-    if (/代码|编程|函数|bug|修复|实现|写.*代码|创建.*文件|编写/.test(lower)) {
+    if (/代码|编程|函数|bug|修复|实现|写|创建|文件|脚本/.test(lower)) {
       return this.findAgentByType('coder');
     }
-
-    // 审查相关
-    if (/审查|review|检查.*代码|优化/.test(lower)) {
+    if (/审查|review|检查|优化/.test(lower)) {
       return this.findAgentByType('reviewer');
     }
-
-    // 研究相关
     if (/调研|研究|分析|对比|选型/.test(lower)) {
       return this.findAgentByType('researcher');
     }
-
-    // 默认用 coder
     return this.findAgentByType('coder') || this.findBestAgent('general');
   }
 
@@ -258,14 +232,14 @@ export class Orchestrator extends EventEmitter {
   }
 
   private findBestAgent(purpose: string): BaseAgent | undefined {
-    // 优先用 coder，其次任意 agent
     return this.findAgentByType('coder') ||
       this.findAgentByType('researcher') ||
       Array.from(this.agents.values())[0];
   }
 
-  private async executePlan(plan: TaskPlan): Promise<void> {
+  private async executePlan(plan: TaskPlan): Promise<AgentTaskResult[]> {
     const executed = new Set<string>();
+    const allResults: AgentTaskResult[] = [];
 
     while (executed.size < plan.tasks.length) {
       const readyTasks = plan.tasks.filter(task =>
@@ -275,69 +249,59 @@ export class Orchestrator extends EventEmitter {
 
       if (readyTasks.length === 0) break;
 
-      const chunks = this.chunk(readyTasks, this.config.orchestrator.max_concurrent_agents);
+      for (const task of readyTasks) {
+        const agent = this.findAgentByType(task.assignee) || this.findBestAgent('general');
+        if (!agent) {
+          executed.add(task.id);
+          continue;
+        }
 
-      for (const chunk of chunks) {
-        await Promise.all(chunk.map(async (task) => {
-          const agent = this.findAgentByType(task.assignee) || this.findBestAgent('general');
-          if (!agent) {
-            executed.add(task.id);
-            return;
-          }
+        try {
+          const contextInfo = sharedContext.buildContextSummary(agent.id);
+          const taskWithContext = contextInfo.length > 50
+            ? `${task.description}\n\n${contextInfo}`
+            : task.description;
 
-          try {
-            // 给 agent 提供其他 agent 的上下文
-            const contextInfo = sharedContext.buildContextSummary(agent.id);
-            const taskWithContext = contextInfo.length > 50
-              ? `${task.description}\n\n${contextInfo}`
-              : task.description;
-
-            await agent.processTask(taskWithContext);
-            executed.add(task.id);
-            this.completedTasks++;
-            this.emit('task_complete', task);
-          } catch {
-            executed.add(task.id);
-          }
-        }));
+          const result = await agent.processTask(taskWithContext);
+          allResults.push(result);
+          executed.add(task.id);
+          this.completedTasks++;
+          this.emit('task_complete', task);
+        } catch {
+          executed.add(task.id);
+        }
       }
     }
+
+    return allResults;
   }
 
-  private generateSummary(plan: TaskPlan): string {
+  private generateSummary(plan: TaskPlan, results: AgentTaskResult[]): string {
     const agentStates = Array.from(this.agents.values()).map(a => a.getState());
     const totalTokens = agentStates.reduce((sum, s) => sum + s.tokenUsage, 0);
 
-    // 从共享上下文获取所有结果
-    const latestOutputs = sharedContext.getLatestOutputs();
-    let resultsSection = '';
-    for (const [agentId, output] of latestOutputs) {
-      const agent = this.agents.get(agentId);
-      if (agent) {
-        resultsSection += `\n### ${agent.name}\n${output.slice(0, 500)}${output.length > 500 ? '...' : ''}\n`;
+    let output = `## 任务完成\n\n`;
+    output += `- 任务数: ${this.totalTasks} | Token: ${totalTokens}\n\n`;
+
+    // 只显示 Agent 的总结，不显示原始工具输出
+    for (const result of results) {
+      if (result.toolSummary) {
+        output += result.toolSummary + '\n\n';
+      } else if (result.content) {
+        output += result.content.slice(0, 300) + '\n\n';
       }
     }
 
-    return `## 任务完成
-
-**执行摘要:**
-- 总任务数: ${this.totalTasks}
-- 已完成: ${this.completedTasks}
-- 使用 Agent: ${agentStates.filter(s => s.messageCount > 0).length}
-- Token 用量: ${totalTokens}
-
-**各 Agent 输出:**
-${resultsSection}
-
-${plan.summary}`;
-  }
-
-  private chunk<T>(array: T[], size: number): T[][] {
-    const chunks: T[][] = [];
-    for (let i = 0; i < array.length; i += size) {
-      chunks.push(array.slice(i, i + size));
+    // 折叠的工具结果
+    const foldedResults = results.filter(r => r.toolResults);
+    if (foldedResults.length > 0) {
+      output += '---\n**工具执行详情 (折叠):**\n';
+      for (const r of foldedResults) {
+        output += r.toolResults + '\n';
+      }
     }
-    return chunks;
+
+    return output;
   }
 
   private setStatus(status: OrchestratorStatus): void {
