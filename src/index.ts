@@ -38,15 +38,14 @@ async function startApp(sessionName?: string, resumeSessionId?: string) {
       return;
     }
 
-    const React = await import('react');
-    const { render } = await import('ink');
-    const { App } = await import('./tui/App.js');
-
-    const { waitUntilExit } = render(
-      React.createElement(App, { config, sessionName, resumeSessionId })
-    );
-
-    await waitUntilExit();
+    // 使用 blessed 全屏渲染（不闪烁）
+    const { Screen } = await import('./tui/screen.js');
+    const screen = new Screen({
+      config,
+      sessionName,
+      resumeSessionId,
+    });
+    screen.render();
   } catch (error) {
     console.error('启动失败:', (error as Error).message);
     process.exit(1);

@@ -339,269 +339,6 @@ var init_session = __esm({
   }
 });
 
-// src/tui/components/Header.tsx
-import React from "react";
-import { Box, Text } from "ink";
-function Header({ sessionName, agentCount, messageCount }) {
-  return /* @__PURE__ */ React.createElement(
-    Box,
-    {
-      borderStyle: "single",
-      borderBottom: true,
-      borderTop: false,
-      borderLeft: false,
-      borderRight: false,
-      paddingX: 1
-    },
-    /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "OpenAgents v1.0"),
-    /* @__PURE__ */ React.createElement(Text, { color: "gray" }, " \u2500\u2500\u2500\u2500\u2500\u2500\u2500 "),
-    /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Session: ", sessionName),
-    /* @__PURE__ */ React.createElement(Text, { color: "gray" }, " \u2500\u2500\u2500\u2500\u2500\u2500\u2500 "),
-    /* @__PURE__ */ React.createElement(Text, { color: "green" }, "Agents: ", agentCount),
-    /* @__PURE__ */ React.createElement(Text, { color: "gray" }, " \u2500\u2500\u2500\u2500\u2500\u2500\u2500 "),
-    /* @__PURE__ */ React.createElement(Text, { color: "magenta" }, "Messages: ", messageCount)
-  );
-}
-var init_Header = __esm({
-  "src/tui/components/Header.tsx"() {
-    "use strict";
-  }
-});
-
-// src/tui/components/ChatPanel.tsx
-import React2, { memo } from "react";
-import { Box as Box2, Text as Text2 } from "ink";
-import Spinner from "ink-spinner";
-var formatMessage, ChatPanel;
-var init_ChatPanel = __esm({
-  "src/tui/components/ChatPanel.tsx"() {
-    "use strict";
-    formatMessage = (msg) => {
-      switch (msg.type) {
-        case "user_input":
-          return { prefix: "You", color: "green" };
-        case "agent_message":
-          return { prefix: "Agent", color: "yellow" };
-        case "task_completed":
-          return { prefix: msg.from, color: "blue" };
-        case "task_failed":
-          return { prefix: msg.from, color: "red" };
-        case "agent_status":
-          return { prefix: msg.from, color: "gray" };
-        case "system":
-          return { prefix: "System", color: "magenta" };
-        default:
-          return { prefix: msg.from, color: "white" };
-      }
-    };
-    ChatPanel = memo(function ChatPanel2({ messages, isLoading, active }) {
-      const borderColor = active ? "cyan" : "gray";
-      return /* @__PURE__ */ React2.createElement(
-        Box2,
-        {
-          flexDirection: "column",
-          flexGrow: 2,
-          borderStyle: "round",
-          borderColor,
-          paddingX: 1,
-          overflow: "hidden"
-        },
-        /* @__PURE__ */ React2.createElement(Text2, { bold: true, color: "cyan" }, "Chat"),
-        /* @__PURE__ */ React2.createElement(Box2, { flexDirection: "column", flexGrow: 1, overflow: "hidden" }, messages.length === 0 ? /* @__PURE__ */ React2.createElement(Box2, { marginTop: 1 }, /* @__PURE__ */ React2.createElement(Text2, { color: "gray", dimColor: true }, "\u8F93\u5165\u6D88\u606F\u5F00\u59CB\u5BF9\u8BDD...", "\n", "\u7B80\u5355\u95EE\u9898\u4F1A\u76F4\u63A5\u56DE\u7B54\uFF0C\u590D\u6742\u4EFB\u52A1\u4F1A\u5206\u89E3\u7ED9\u591A\u4E2A Agent \u534F\u4F5C\u3002")) : messages.slice(-30).map((msg) => {
-          const { prefix, color } = formatMessage(msg);
-          return /* @__PURE__ */ React2.createElement(Box2, { key: msg.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React2.createElement(Text2, null, /* @__PURE__ */ React2.createElement(Text2, { color, bold: true }, "[", prefix, "]"), /* @__PURE__ */ React2.createElement(Text2, { color: "gray" }, " ", msg.timestamp.toLocaleTimeString())), /* @__PURE__ */ React2.createElement(Text2, { wrap: "wrap" }, msg.content));
-        }), isLoading && /* @__PURE__ */ React2.createElement(Box2, null, /* @__PURE__ */ React2.createElement(Text2, { color: "yellow" }, /* @__PURE__ */ React2.createElement(Spinner, { type: "dots" }), " Agent \u6B63\u5728\u5904\u7406...")))
-      );
-    });
-  }
-});
-
-// src/tui/components/AgentStatus.tsx
-import React3, { memo as memo2 } from "react";
-import { Box as Box3, Text as Text3 } from "ink";
-var getStatusIcon, getStatusColor, AgentStatusPanel;
-var init_AgentStatus = __esm({
-  "src/tui/components/AgentStatus.tsx"() {
-    "use strict";
-    getStatusIcon = (status) => {
-      switch (status) {
-        case "idle":
-          return "\u25CB";
-        case "working":
-          return "\u25CF";
-        case "thinking":
-          return "\u25D0";
-        case "error":
-          return "\u2717";
-        case "stopped":
-          return "\u25A0";
-        default:
-          return "?";
-      }
-    };
-    getStatusColor = (status) => {
-      switch (status) {
-        case "idle":
-          return "gray";
-        case "working":
-          return "green";
-        case "thinking":
-          return "yellow";
-        case "error":
-          return "red";
-        case "stopped":
-          return "gray";
-        default:
-          return "white";
-      }
-    };
-    AgentStatusPanel = memo2(function AgentStatusPanel2({ agents, active }) {
-      const borderColor = active ? "cyan" : "gray";
-      return /* @__PURE__ */ React3.createElement(
-        Box3,
-        {
-          flexDirection: "column",
-          width: 30,
-          borderStyle: "round",
-          borderColor,
-          paddingX: 1
-        },
-        /* @__PURE__ */ React3.createElement(Text3, { bold: true, color: "cyan" }, "Agents"),
-        /* @__PURE__ */ React3.createElement(Box3, { flexDirection: "column", marginTop: 1 }, agents.map((agent) => /* @__PURE__ */ React3.createElement(Box3, { key: agent.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React3.createElement(Text3, null, /* @__PURE__ */ React3.createElement(Text3, { color: getStatusColor(agent.status) }, getStatusIcon(agent.status), " "), /* @__PURE__ */ React3.createElement(Text3, { bold: true }, agent.name)), /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, agent.type, " | Token: ", agent.tokenUsage), agent.currentTask && /* @__PURE__ */ React3.createElement(Text3, { color: "yellow", dimColor: true }, "\u5F53\u524D: ", agent.currentTask.description.slice(0, 20), "...")))),
-        active && /* @__PURE__ */ React3.createElement(Box3, { marginTop: 1, borderStyle: "single", borderTop: true, paddingX: 1 }, /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, "Tab \u5207\u6362\u9762\u677F"))
-      );
-    });
-  }
-});
-
-// src/tui/components/InputBar.tsx
-import React4, { useState } from "react";
-import { Box as Box4, Text as Text4 } from "ink";
-import TextInput from "ink-text-input";
-function InputBar({ onSubmit, isLoading, disabled }) {
-  const [value, setValue] = useState("");
-  const handleSubmit = (input) => {
-    if (input.trim()) {
-      onSubmit(input);
-      setValue("");
-    }
-  };
-  return /* @__PURE__ */ React4.createElement(
-    Box4,
-    {
-      borderStyle: "single",
-      borderTop: true,
-      borderBottom: false,
-      borderLeft: false,
-      borderRight: false,
-      paddingX: 1
-    },
-    /* @__PURE__ */ React4.createElement(Text4, { color: "cyan", bold: true }, isLoading ? "\u27F3 " : "> "),
-    /* @__PURE__ */ React4.createElement(
-      TextInput,
-      {
-        value,
-        onChange: setValue,
-        onSubmit: handleSubmit,
-        placeholder: isLoading ? "Agent \u6B63\u5728\u5904\u7406..." : "\u8F93\u5165\u6D88\u606F\u6216\u547D\u4EE4...",
-        focus: !disabled
-      }
-    )
-  );
-}
-var init_InputBar = __esm({
-  "src/tui/components/InputBar.tsx"() {
-    "use strict";
-  }
-});
-
-// src/tui/components/ApprovalDialog.tsx
-import React5 from "react";
-import { Box as Box5, Text as Text5 } from "ink";
-import { useInput } from "ink";
-function ApprovalDialog({ tool, params, onApprove, onDeny }) {
-  return /* @__PURE__ */ React5.createElement(
-    Box5,
-    {
-      flexDirection: "column",
-      borderStyle: "double",
-      borderColor: "yellow",
-      paddingX: 1,
-      marginBottom: 1
-    },
-    /* @__PURE__ */ React5.createElement(Text5, { bold: true, color: "yellow" }, "\u26A0\uFE0F \u547D\u4EE4\u9700\u8981\u5BA1\u6279"),
-    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u5DE5\u5177: "), /* @__PURE__ */ React5.createElement(Text5, { bold: true }, tool)),
-    params.command && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u547D\u4EE4: "), /* @__PURE__ */ React5.createElement(Text5, { color: "red" }, params.command)),
-    params.reason && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u539F\u56E0: "), /* @__PURE__ */ React5.createElement(Text5, null, params.reason)),
-    params.path && /* @__PURE__ */ React5.createElement(Box5, null, /* @__PURE__ */ React5.createElement(Text5, { color: "cyan" }, "\u8DEF\u5F84: "), /* @__PURE__ */ React5.createElement(Text5, null, params.path)),
-    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, null, "\u6309 ", /* @__PURE__ */ React5.createElement(Text5, { color: "green", bold: true }, "Y"), " \u6267\u884C | \u6309 ", /* @__PURE__ */ React5.createElement(Text5, { color: "red", bold: true }, "N"), " \u62D2\u7EDD")),
-    /* @__PURE__ */ React5.createElement(Box5, { marginTop: 1 }, /* @__PURE__ */ React5.createElement(Text5, { color: "gray", dimColor: true }, "\u63D0\u793A: \u4F7F\u7528\u952E\u76D8\u8F93\u5165 y \u6216 n")),
-    /* @__PURE__ */ React5.createElement(ApprovalKeyListener, { onApprove, onDeny })
-  );
-}
-function ApprovalKeyListener({ onApprove, onDeny }) {
-  useInput((input) => {
-    if (input.toLowerCase() === "y") {
-      onApprove();
-    } else if (input.toLowerCase() === "n") {
-      onDeny();
-    }
-  });
-  return null;
-}
-var init_ApprovalDialog = __esm({
-  "src/tui/components/ApprovalDialog.tsx"() {
-    "use strict";
-  }
-});
-
-// src/tui/components/SessionPicker.tsx
-import React6, { useState as useState2, useEffect } from "react";
-import { Box as Box6, Text as Text6, useInput as useInput2 } from "ink";
-function SessionPicker({ onSelect, onCancel }) {
-  const [sessions, setSessions] = useState2([]);
-  const [selectedIndex, setSelectedIndex] = useState2(0);
-  useEffect(() => {
-    const list = Session.listSessions();
-    setSessions(list);
-  }, []);
-  useInput2((input, key) => {
-    if (key.upArrow || input === "k") {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
-    } else if (key.downArrow || input === "j") {
-      setSelectedIndex((prev) => Math.min(sessions.length - 1, prev + 1));
-    } else if (key.return) {
-      if (sessions[selectedIndex]) {
-        onSelect(sessions[selectedIndex].id);
-      }
-    } else if (key.escape || input === "q") {
-      onCancel();
-    } else if (input === "d") {
-      if (sessions[selectedIndex]) {
-        Session.deleteSession(sessions[selectedIndex].id);
-        const newList = Session.listSessions();
-        setSessions(newList);
-        setSelectedIndex((prev) => Math.min(prev, newList.length - 1));
-      }
-    }
-  });
-  if (sessions.length === 0) {
-    return /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React6.createElement(Text6, { bold: true, color: "cyan" }, "\u5386\u53F2\u4F1A\u8BDD"), /* @__PURE__ */ React6.createElement(Box6, { marginTop: 1 }, /* @__PURE__ */ React6.createElement(Text6, { color: "gray" }, "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD\u3002\u6309 Esc \u8FD4\u56DE\u3002")));
-  }
-  return /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React6.createElement(Text6, { bold: true, color: "cyan" }, "\u5386\u53F2\u4F1A\u8BDD"), /* @__PURE__ */ React6.createElement(Text6, { color: "gray", dimColor: true }, "\u2191\u2193 \u9009\u62E9 | Enter \u6253\u5F00 | d \u5220\u9664 | Esc \u8FD4\u56DE"), /* @__PURE__ */ React6.createElement(Box6, { flexDirection: "column", marginTop: 1 }, sessions.map((session, index) => {
-    const isSelected = index === selectedIndex;
-    const date = new Date(session.updatedAt).toLocaleString();
-    const msgCount = session.messages.length;
-    return /* @__PURE__ */ React6.createElement(Box6, { key: session.id }, /* @__PURE__ */ React6.createElement(Text6, { color: isSelected ? "cyan" : "white" }, isSelected ? "\u25B6 " : "  ", session.name), /* @__PURE__ */ React6.createElement(Text6, { color: "gray", dimColor: true }, " ", "(", msgCount, " \u6761\u6D88\u606F, ", date, ")"));
-  })));
-}
-var init_SessionPicker = __esm({
-  "src/tui/components/SessionPicker.tsx"() {
-    "use strict";
-    init_session();
-  }
-});
-
 // src/core/shared-context.ts
 import { EventEmitter } from "events";
 var SharedContext, sharedContext;
@@ -1757,268 +1494,462 @@ var init_client = __esm({
   }
 });
 
-// src/tui/App.tsx
-var App_exports = {};
-__export(App_exports, {
-  App: () => App
+// src/tui/screen.ts
+var screen_exports = {};
+__export(screen_exports, {
+  Screen: () => Screen
 });
-import React7, { useState as useState3, useEffect as useEffect2, useCallback, useRef } from "react";
-import { Box as Box7, useApp, useInput as useInput3 } from "ink";
-function App({ config, sessionName, resumeSessionId }) {
-  const { exit } = useApp();
-  const [messages, setMessages] = useState3([]);
-  const [agents, setAgents] = useState3([]);
-  const [isLoading, setIsLoading] = useState3(false);
-  const [activePanel, setActivePanel] = useState3("chat");
-  const [showApproval, setShowApproval] = useState3(false);
-  const [approvalInfo, setApprovalInfo] = useState3(null);
-  const [showSessionPicker, setShowSessionPicker] = useState3(false);
-  const orchestratorRef = useRef(null);
-  const sessionRef = useRef(null);
-  const messagesRef = useRef([]);
-  const lastMessageCountRef = useRef(0);
-  useEffect2(() => {
-    const llm = new LLMClient(config.providers);
-    const orch = new Orchestrator(config, llm);
-    orch.setApproveCallback((tool, params) => {
-      return new Promise((resolve2) => {
-        setApprovalInfo({ tool, params, resolve: resolve2 });
-        setShowApproval(true);
-      });
-    });
-    let sess;
-    if (resumeSessionId) {
-      const loaded = Session.load(resumeSessionId);
-      if (loaded) {
-        sess = loaded;
-        messagesRef.current = loaded.getMessages();
-        setMessages([...messagesRef.current]);
-      } else {
-        sess = new Session(sessionName);
-      }
-    } else {
-      sess = new Session(sessionName);
-    }
-    orchestratorRef.current = orch;
-    sessionRef.current = sess;
-    orch.on("response", (response) => {
-      const msg = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        type: "agent_message",
-        from: "orchestrator",
-        content: response,
-        timestamp: /* @__PURE__ */ new Date()
-      };
-      messagesRef.current = [...messagesRef.current, msg];
-      setMessages([...messagesRef.current]);
-      setIsLoading(false);
-      sess.addMessage(msg);
-    });
-    orch.on("error", (error) => {
-      const msg = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        type: "system",
-        from: "system",
-        content: `\u9519\u8BEF: ${error.message}`,
-        timestamp: /* @__PURE__ */ new Date()
-      };
-      messagesRef.current = [...messagesRef.current, msg];
-      setMessages([...messagesRef.current]);
-      setIsLoading(false);
-    });
-    orch.on("status_change", () => {
-      setAgents([...orch.getState().agents]);
-    });
-    const timer = setInterval(() => {
-      if (orch) {
-        const newAgents = orch.getState().agents;
-        setAgents((prev) => {
-          if (JSON.stringify(prev) !== JSON.stringify(newAgents)) {
-            return [...newAgents];
+import * as blessed from "blessed";
+var Screen;
+var init_screen = __esm({
+  "src/tui/screen.ts"() {
+    "use strict";
+    init_orchestrator();
+    init_session();
+    init_client();
+    Screen = class {
+      screen;
+      chatBox;
+      agentBox;
+      inputBox;
+      statusBar;
+      approvalBox;
+      orchestrator;
+      session;
+      messages = [];
+      agents = [];
+      isLoading = false;
+      approveResolve;
+      constructor(options) {
+        this.screen = blessed.screen({
+          smartCSR: true,
+          fullUnicode: true,
+          title: "OpenAgents v2.0",
+          dockBorders: true
+        });
+        const llm = new LLMClient(options.config.providers);
+        this.orchestrator = new Orchestrator(options.config, llm);
+        this.orchestrator.setApproveCallback((tool, params) => {
+          return this.showApproval(tool, params);
+        });
+        if (options.resumeSessionId) {
+          const loaded = Session.load(options.resumeSessionId);
+          this.session = loaded || new Session(options.sessionName);
+          if (loaded) {
+            this.messages = loaded.getMessages();
           }
-          return prev;
+        } else {
+          this.session = new Session(options.sessionName);
+        }
+        this.setupLayout();
+        this.setupEvents();
+        this.renderMessages();
+        this.renderAgents();
+      }
+      setupLayout() {
+        this.statusBar = blessed.box({
+          parent: this.screen,
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: 1,
+          tags: true,
+          style: {
+            fg: "white",
+            bg: "blue"
+          },
+          content: ` {bold}OpenAgents v2.0{/bold} \u2502 \u4F1A\u8BDD: ${this.session.getName()} \u2502 \u6309 {bold}Tab{/bold} \u5207\u6362\u9762\u677F \u2502 {bold}Ctrl+C{/bold} \u9000\u51FA \u2502 {bold}/help{/bold} \u5E2E\u52A9`
+        });
+        this.chatBox = blessed.box({
+          parent: this.screen,
+          top: 1,
+          left: 0,
+          width: "75%",
+          height: "100%-4",
+          label: " {bold}Chat{/bold} ",
+          border: { type: "line" },
+          tags: true,
+          scrollable: true,
+          alwaysScroll: true,
+          scrollbar: {
+            style: { bg: "gray" }
+          },
+          style: {
+            border: { fg: "cyan" },
+            label: { fg: "cyan" }
+          }
+        });
+        this.agentBox = blessed.box({
+          parent: this.screen,
+          top: 1,
+          left: "75%",
+          width: "25%",
+          height: "100%-4",
+          label: " {bold}Agents{/bold} ",
+          border: { type: "line" },
+          tags: true,
+          scrollable: true,
+          style: {
+            border: { fg: "gray" },
+            label: { fg: "cyan" }
+          }
+        });
+        this.inputBox = blessed.textbox({
+          parent: this.screen,
+          bottom: 0,
+          left: 0,
+          width: "100%",
+          height: 3,
+          label: " {bold}Input{/bold} ",
+          border: { type: "line" },
+          tags: true,
+          style: {
+            border: { fg: "cyan" },
+            label: { fg: "cyan" }
+          }
         });
       }
-    }, 1e3);
-    return () => {
-      clearInterval(timer);
-      orch.removeAllListeners();
-    };
-  }, [config, sessionName, resumeSessionId]);
-  const handleInput = useCallback(async (input) => {
-    if (!orchestratorRef.current || !sessionRef.current) return;
-    if (input.trim() === "") return;
-    if (isLoading) return;
-    if (input.startsWith("/")) {
-      handleCommand(input);
-      return;
-    }
-    setIsLoading(true);
-    const userMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type: "user_input",
-      from: "user",
-      content: input,
-      timestamp: /* @__PURE__ */ new Date()
-    };
-    messagesRef.current = [...messagesRef.current, userMessage];
-    setMessages([...messagesRef.current]);
-    sessionRef.current.addMessage(userMessage);
-    try {
-      await orchestratorRef.current.processUserInput(input);
-    } catch (error) {
-      const errorMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        type: "system",
-        from: "system",
-        content: `\u9519\u8BEF: ${error.message}`,
-        timestamp: /* @__PURE__ */ new Date()
-      };
-      messagesRef.current = [...messagesRef.current, errorMessage];
-      setMessages([...messagesRef.current]);
-      setIsLoading(false);
-    }
-    if (config.sessions.auto_save) {
-      sessionRef.current.save();
-    }
-  }, [isLoading, config]);
-  const handleCommand = useCallback((input) => {
-    const cmd = input.slice(1).trim().split(" ")[0];
-    switch (cmd) {
-      case "quit":
-      case "exit":
-        sessionRef.current?.save();
-        exit();
-        break;
-      case "clear":
-        messagesRef.current = [];
-        setMessages([]);
-        break;
-      case "reset":
-        orchestratorRef.current?.resetAllAgents();
-        messagesRef.current = [];
-        setMessages([]);
-        break;
-      case "save":
-        sessionRef.current?.save();
-        addSystemMessage("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58");
-        break;
-      case "agents":
-        setActivePanel((prev) => prev === "agents" ? "chat" : "agents");
-        break;
-      case "sessions":
-        setShowSessionPicker(true);
-        break;
-      case "help":
-        addSystemMessage(`\u53EF\u7528\u547D\u4EE4:
+      setupEvents() {
+        this.orchestrator.on("response", (response) => {
+          this.addMessage({
+            type: "agent_message",
+            from: "orchestrator",
+            content: response
+          });
+          this.isLoading = false;
+          this.updateStatus();
+          this.renderMessages();
+          this.renderAgents();
+          this.focusInput();
+        });
+        this.orchestrator.on("error", (error) => {
+          this.addMessage({
+            type: "system",
+            from: "system",
+            content: `\u9519\u8BEF: ${error.message}`
+          });
+          this.isLoading = false;
+          this.updateStatus();
+          this.renderMessages();
+          this.focusInput();
+        });
+        this.orchestrator.on("status_change", () => {
+          this.agents = this.orchestrator.getState().agents;
+          this.renderAgents();
+        });
+        this.screen.key(["C-c"], () => {
+          this.session.save();
+          process.exit(0);
+        });
+        this.screen.key(["tab"], () => {
+          if (this.screen.focused === this.chatBox) {
+            this.screen.focusGrabbed = false;
+            this.agentBox.focus();
+          } else {
+            this.screen.focusGrabbed = false;
+            this.chatBox.focus();
+          }
+        });
+        this.inputBox.on("submit", (value) => {
+          this.handleInput(value);
+        });
+        setInterval(() => {
+          if (this.orchestrator) {
+            const newAgents = this.orchestrator.getState().agents;
+            if (JSON.stringify(newAgents) !== JSON.stringify(this.agents)) {
+              this.agents = newAgents;
+              this.renderAgents();
+            }
+          }
+        }, 2e3);
+        this.focusInput();
+      }
+      async handleInput(input) {
+        this.inputBox.clearValue();
+        this.screen.render();
+        if (!input.trim()) {
+          this.focusInput();
+          return;
+        }
+        if (this.isLoading) {
+          this.focusInput();
+          return;
+        }
+        if (input.startsWith("/")) {
+          this.handleCommand(input);
+          this.focusInput();
+          return;
+        }
+        this.isLoading = true;
+        this.updateStatus();
+        this.addMessage({
+          type: "user_input",
+          from: "user",
+          content: input
+        });
+        this.renderMessages();
+        try {
+          await this.orchestrator.processUserInput(input);
+        } catch (error) {
+          this.addMessage({
+            type: "system",
+            from: "system",
+            content: `\u9519\u8BEF: ${error.message}`
+          });
+          this.isLoading = false;
+        }
+        if (true) {
+          this.session.save();
+        }
+        this.updateStatus();
+        this.renderMessages();
+        this.focusInput();
+      }
+      handleCommand(input) {
+        const cmd = input.slice(1).trim().split(" ")[0];
+        switch (cmd) {
+          case "quit":
+          case "exit":
+            this.session.save();
+            process.exit(0);
+            break;
+          case "clear":
+            this.messages = [];
+            this.renderMessages();
+            break;
+          case "reset":
+            this.orchestrator.resetAllAgents();
+            this.messages = [];
+            this.renderMessages();
+            this.renderAgents();
+            break;
+          case "save":
+            this.session.save();
+            this.addMessage({ type: "system", from: "system", content: "\u4F1A\u8BDD\u5DF2\u4FDD\u5B58" });
+            this.renderMessages();
+            break;
+          case "agents":
+            this.agentBox.focus();
+            break;
+          case "sessions":
+            this.showSessionPicker();
+            break;
+          case "help":
+            this.addMessage({
+              type: "system",
+              from: "system",
+              content: `\u53EF\u7528\u547D\u4EE4:
 /quit, /exit    - \u9000\u51FA\u7A0B\u5E8F
 /clear          - \u6E05\u5C4F
 /reset          - \u91CD\u7F6E\u6240\u6709 Agent
 /save           - \u4FDD\u5B58\u4F1A\u8BDD
-/agents         - \u5207\u6362 Agent \u9762\u677F
 /sessions       - \u9009\u62E9\u5386\u53F2\u4F1A\u8BDD
-/help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`);
-        break;
-      default:
-        addSystemMessage(`\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u53EF\u7528\u547D\u4EE4\u3002`);
-    }
-  }, [exit]);
-  const addSystemMessage = (content) => {
-    const msg = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type: "system",
-      from: "system",
-      content,
-      timestamp: /* @__PURE__ */ new Date()
-    };
-    messagesRef.current = [...messagesRef.current, msg];
-    setMessages([...messagesRef.current]);
-  };
-  const handleApproval = (approved) => {
-    if (approvalInfo) {
-      approvalInfo.resolve(approved);
-      setShowApproval(false);
-      setApprovalInfo(null);
-    }
-  };
-  const handleSessionSelect = (sessionId) => {
-    setShowSessionPicker(false);
-    const loaded = Session.load(sessionId);
-    if (loaded) {
-      sessionRef.current = loaded;
-      messagesRef.current = loaded.getMessages();
-      setMessages([...messagesRef.current]);
-      addSystemMessage(`\u5DF2\u5207\u6362\u5230\u4F1A\u8BDD: ${loaded.getName()}`);
-    }
-  };
-  useInput3((input, key) => {
-    if (showApproval || showSessionPicker) return;
-    if (key.ctrl && input === "c") {
-      sessionRef.current?.save();
-      exit();
-    }
-    if (key.tab) {
-      setActivePanel((prev) => prev === "agents" ? "chat" : "agents");
-    }
-  });
-  if (showSessionPicker) {
-    return /* @__PURE__ */ React7.createElement(
-      SessionPicker,
-      {
-        onSelect: handleSessionSelect,
-        onCancel: () => setShowSessionPicker(false)
+/agents         - \u805A\u7126 Agent \u9762\u677F
+/help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`
+            });
+            this.renderMessages();
+            break;
+          default:
+            this.addMessage({
+              type: "system",
+              from: "system",
+              content: `\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9\u3002`
+            });
+            this.renderMessages();
+        }
       }
-    );
-  }
-  return /* @__PURE__ */ React7.createElement(Box7, { flexDirection: "column", height: "100%" }, /* @__PURE__ */ React7.createElement(
-    Header,
-    {
-      sessionName: sessionRef.current?.getName() || "\u672A\u547D\u540D",
-      agentCount: agents.length,
-      messageCount: messages.length
-    }
-  ), /* @__PURE__ */ React7.createElement(Box7, { flexDirection: "row", flexGrow: 1 }, /* @__PURE__ */ React7.createElement(
-    ChatPanel,
-    {
-      messages,
-      isLoading,
-      active: activePanel === "chat"
-    }
-  ), /* @__PURE__ */ React7.createElement(
-    AgentStatusPanel,
-    {
-      agents,
-      active: activePanel === "agents"
-    }
-  )), showApproval && approvalInfo && /* @__PURE__ */ React7.createElement(
-    ApprovalDialog,
-    {
-      tool: approvalInfo.tool,
-      params: approvalInfo.params,
-      onApprove: () => handleApproval(true),
-      onDeny: () => handleApproval(false)
-    }
-  ), /* @__PURE__ */ React7.createElement(
-    InputBar,
-    {
-      onSubmit: handleInput,
-      isLoading,
-      disabled: showApproval
-    }
-  ));
-}
-var init_App = __esm({
-  "src/tui/App.tsx"() {
-    "use strict";
-    init_Header();
-    init_ChatPanel();
-    init_AgentStatus();
-    init_InputBar();
-    init_ApprovalDialog();
-    init_SessionPicker();
-    init_orchestrator();
-    init_session();
-    init_client();
+      addMessage(msg) {
+        const fullMsg = {
+          ...msg,
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: /* @__PURE__ */ new Date()
+        };
+        this.messages.push(fullMsg);
+        this.session.addMessage(fullMsg);
+      }
+      renderMessages() {
+        const lines = [];
+        for (const msg of this.messages.slice(-100)) {
+          const time = msg.timestamp.toLocaleTimeString();
+          let prefix;
+          let color;
+          switch (msg.type) {
+            case "user_input":
+              prefix = "You";
+              color = "green";
+              break;
+            case "agent_message":
+              prefix = "Agent";
+              color = "yellow";
+              break;
+            case "system":
+              prefix = "System";
+              color = "magenta";
+              break;
+            default:
+              prefix = msg.from;
+              color = "white";
+          }
+          const contentLines = msg.content.split("\n");
+          lines.push(`{${color}-fg}{bold}[${prefix}]{/bold}{/${color}-fg} {gray-fg}${time}{/gray-fg}`);
+          for (const line of contentLines) {
+            lines.push(`  ${line}`);
+          }
+          lines.push("");
+        }
+        this.chatBox.setContent(lines.join("\n"));
+        this.chatBox.setScrollPerc(100);
+        this.screen.render();
+      }
+      renderAgents() {
+        const lines = [];
+        for (const agent of this.agents) {
+          let statusIcon;
+          let statusColor;
+          switch (agent.status) {
+            case "idle":
+              statusIcon = "\u25CB";
+              statusColor = "gray";
+              break;
+            case "working":
+              statusIcon = "\u25CF";
+              statusColor = "green";
+              break;
+            case "thinking":
+              statusIcon = "\u25D0";
+              statusColor = "yellow";
+              break;
+            case "error":
+              statusIcon = "\u2717";
+              statusColor = "red";
+              break;
+            default:
+              statusIcon = "?";
+              statusColor = "white";
+          }
+          lines.push(`{${statusColor}-fg}${statusIcon}{/${statusColor}-fg} {bold}${agent.name}{/bold}`);
+          lines.push(`  {gray-fg}${agent.type} | Token: ${agent.tokenUsage}{/gray-fg}`);
+          if (agent.currentTask) {
+            lines.push(`  {yellow-fg}${agent.currentTask.description.slice(0, 25)}...{/yellow-fg}`);
+          }
+          lines.push("");
+        }
+        this.agentBox.setContent(lines.join("\n"));
+        this.screen.render();
+      }
+      updateStatus() {
+        const status = this.isLoading ? "{yellow-fg}\u5904\u7406\u4E2D...{/yellow-fg}" : "{green-fg}\u5C31\u7EEA{/green-fg}";
+        this.statusBar.setContent(` {bold}OpenAgents v2.0{/bold} \u2502 \u4F1A\u8BDD: ${this.session.getName()} \u2502 \u72B6\u6001: ${status} \u2502 \u6D88\u606F: ${this.messages.length} \u2502 {bold}Tab{/bold} \u5207\u6362 \u2502 {bold}Ctrl+C{/bold} \u9000\u51FA`);
+        this.screen.render();
+      }
+      focusInput() {
+        this.inputBox.focus();
+        this.screen.render();
+      }
+      showApproval(tool, params) {
+        return new Promise((resolve2) => {
+          this.approveResolve = resolve2;
+          const command = params.command || "";
+          const reason = params.reason || "";
+          this.approvalBox = blessed.box({
+            parent: this.screen,
+            top: "center",
+            left: "center",
+            width: "60%",
+            height: 10,
+            label: " {bold}{yellow-fg}\u26A0\uFE0F \u547D\u4EE4\u9700\u8981\u5BA1\u6279{/yellow-fg}{/bold} ",
+            border: { type: "double" },
+            tags: true,
+            style: {
+              border: { fg: "yellow" },
+              label: { fg: "yellow" }
+            },
+            content: [
+              "",
+              `  {bold}\u5DE5\u5177:{/bold} ${tool}`,
+              `  {bold}\u547D\u4EE4:{/bold} {red-fg}${command}{/red-fg}`,
+              reason ? `  {bold}\u539F\u56E0:{/bold} ${reason}` : "",
+              "",
+              "  \u6309 {bold}{green-fg}Y{/green-fg}{/bold} \u6267\u884C | \u6309 {bold}{red-fg}N{/red-fg}{/bold} \u62D2\u7EDD"
+            ].filter(Boolean).join("\n")
+          });
+          this.approvalBox.key(["y", "Y"], () => {
+            this.closeApproval();
+            resolve2(true);
+          });
+          this.approvalBox.key(["n", "N", "escape"], () => {
+            this.closeApproval();
+            resolve2(false);
+          });
+          this.approvalBox.focus();
+          this.screen.render();
+        });
+      }
+      closeApproval() {
+        if (this.approvalBox) {
+          this.approvalBox.destroy();
+          this.approvalBox = void 0;
+        }
+        this.focusInput();
+      }
+      showSessionPicker() {
+        const sessions = Session.listSessions();
+        if (sessions.length === 0) {
+          this.addMessage({ type: "system", from: "system", content: "\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD" });
+          this.renderMessages();
+          return;
+        }
+        let selectedIndex = 0;
+        const pickerBox = blessed.list({
+          parent: this.screen,
+          top: "center",
+          left: "center",
+          width: "70%",
+          height: Math.min(sessions.length + 5, 20),
+          label: " {bold}\u5386\u53F2\u4F1A\u8BDD{/bold} ",
+          border: { type: "line" },
+          tags: true,
+          keys: true,
+          vi: true,
+          style: {
+            border: { fg: "cyan" },
+            label: { fg: "cyan" },
+            selected: { bg: "blue", fg: "white" },
+            item: { fg: "white" }
+          },
+          items: sessions.map((s) => {
+            const date = new Date(s.updatedAt).toLocaleString();
+            return `${s.name} (${s.messages.length} \u6761, ${date})`;
+          })
+        });
+        pickerBox.on("select", (_item, index) => {
+          const session = sessions[index];
+          if (session) {
+            const loaded = Session.load(session.id);
+            if (loaded) {
+              this.session = loaded;
+              this.messages = loaded.getMessages();
+              this.renderMessages();
+              this.updateStatus();
+            }
+          }
+          pickerBox.destroy();
+          this.focusInput();
+        });
+        pickerBox.key(["escape", "q"], () => {
+          pickerBox.destroy();
+          this.focusInput();
+        });
+        pickerBox.focus();
+        this.screen.render();
+      }
+      render() {
+        this.screen.render();
+      }
+      destroy() {
+        this.screen.destroy();
+      }
+    };
   }
 });
 
@@ -2382,7 +2313,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("1.0.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("2.0.0");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
@@ -2497,13 +2428,13 @@ async function startApp(sessionName, resumeSessionId) {
       console.log('\u8BF7\u8FD0\u884C "openagents config init" \u8FDB\u884C\u914D\u7F6E\u3002');
       return;
     }
-    const React8 = await import("react");
-    const { render } = await import("ink");
-    const { App: App2 } = await Promise.resolve().then(() => (init_App(), App_exports));
-    const { waitUntilExit } = render(
-      React8.createElement(App2, { config, sessionName, resumeSessionId })
-    );
-    await waitUntilExit();
+    const { Screen: Screen2 } = await Promise.resolve().then(() => (init_screen(), screen_exports));
+    const screen2 = new Screen2({
+      config,
+      sessionName,
+      resumeSessionId
+    });
+    screen2.render();
   } catch (error) {
     console.error("\u542F\u52A8\u5931\u8D25:", error.message);
     process.exit(1);
