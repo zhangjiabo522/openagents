@@ -2,8 +2,9 @@
 
 import { Command } from 'commander';
 import * as os from 'os';
-import { loadConfig } from './config/loader.js';
+import { loadConfig, configExists } from './config/loader.js';
 import { createCommands } from './cli/commands.js';
+import { runSetup } from './cli/setup.js';
 
 const program = createCommands();
 
@@ -23,26 +24,19 @@ program.action(async () => {
 
 async function startApp(sessionName?: string) {
   try {
+    // 如果配置不存在，自动运行 setup
+    if (!configExists()) {
+      console.log('欢迎使用 OpenAgents！首次使用需要配置 API Provider。\n');
+      await runSetup();
+      console.log('\n正在启动 OpenAgents...\n');
+    }
+
     const config = loadConfig();
 
     // 检查是否配置了 provider
     if (config.providers.length === 0) {
-      console.log('欢迎使用 OpenAgents！');
-      console.log();
-      console.log('首次使用请先配置 API Provider:');
-      console.log('  openagents config init');
-      console.log();
-      console.log('然后编辑配置文件添加你的 API Key:');
-      console.log(`  ${os.homedir()}/.openagents/config.yaml`);
-      console.log();
-      console.log('示例配置:');
-      console.log(`providers:
-  - name: openai
-    api_key: sk-your-api-key
-    base_url: https://api.openai.com/v1
-  - name: deepseek
-    api_key: sk-your-api-key
-    base_url: https://api.deepseek.com/v1`);
+      console.log('错误: 未配置任何 API Provider。');
+      console.log('请运行 "openagents config init" 进行配置。');
       return;
     }
 

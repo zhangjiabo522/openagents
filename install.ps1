@@ -46,13 +46,14 @@ if ($openagentsPath) {
     Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Green
     Write-Host ""
     Write-Host "使用方法:"
-    Write-Host "  openagents              # 启动交互式会话"
-    Write-Host "  openagents config init  # 初始化配置文件"
+    Write-Host "  openagents              # 启动交互式会话（首次会自动引导配置）"
+    Write-Host "  openagents config init  # 交互式配置 API Provider 和模型"
+    Write-Host "  openagents agents       # 查看已配置的 Agent"
+    Write-Host "  openagents session list # 查看历史会话"
+    Write-Host "  openagents uninstall    # 卸载程序"
     Write-Host "  openagents --help       # 查看帮助"
     Write-Host ""
-    Write-Host "首次使用请先配置 API Provider:" -ForegroundColor Yellow
-    Write-Host "  openagents config init"
-    Write-Host "  然后编辑 ~/.openagents/config.yaml 添加你的 API Key"
+    Write-Host "首次运行 openagents 时会自动引导你配置 API Provider。" -ForegroundColor Yellow
 } else {
     Write-Host "❌ 安装失败，请检查错误信息。" -ForegroundColor Red
     exit 1

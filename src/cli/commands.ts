@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig, saveConfig, configExists, getConfigPath } from '../config/loader.js';
 import { Session } from '../core/session.js';
+import { runSetup, runUninstall } from './setup.js';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 
@@ -28,24 +29,15 @@ export function createCommands(): Command {
 
   configCmd
     .command('init')
-    .description('Initialize configuration file')
-    .action(() => {
-      if (configExists()) {
+    .description('Interactive configuration setup')
+    .option('-f, --force', 'Force overwrite existing configuration')
+    .action(async (options) => {
+      if (configExists() && !options.force) {
         console.log(`配置文件已存在: ${getConfigPath()}`);
-        console.log('如需重新配置，请先删除现有文件。');
+        console.log('如需重新配置，请使用 "openagents config init --force"');
         return;
       }
-      const config = loadConfig();
-      console.log(`配置文件已创建: ${getConfigPath()}`);
-      console.log('\n请编辑配置文件，添加 API Provider 信息。');
-      console.log('\n示例配置:');
-      console.log(`providers:
-  - name: openai
-    api_key: sk-your-api-key
-    base_url: https://api.openai.com/v1
-  - name: deepseek
-    api_key: sk-your-api-key
-    base_url: https://api.deepseek.com/v1`);
+      await runSetup();
     });
 
   configCmd
@@ -53,7 +45,15 @@ export function createCommands(): Command {
     .description('Show current configuration')
     .action(() => {
       const config = loadConfig();
-      console.log(JSON.stringify(config, null, 2));
+      // 隐藏 API Key
+      const safeConfig = {
+        ...config,
+        providers: config.providers.map(p => ({
+          ...p,
+          api_key: p.api_key.slice(0, 8) + '***' + p.api_key.slice(-4),
+        })),
+      };
+      console.log(JSON.stringify(safeConfig, null, 2));
     });
 
   configCmd
@@ -61,6 +61,27 @@ export function createCommands(): Command {
     .description('Show configuration file path')
     .action(() => {
       console.log(getConfigPath());
+    });
+
+  configCmd
+    .command('reset')
+    .description('Reset configuration to defaults')
+    .action(async () => {
+      const readline = await import('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question('确认重置配置？(y/N): ', (answer) => {
+        if (answer.toLowerCase() === 'y') {
+          const { getDefaultConfig } = require('../config/defaults.js');
+          saveConfig(getDefaultConfig());
+          console.log('配置已重置为默认值。');
+        } else {
+          console.log('操作已取消。');
+        }
+        rl.close();
+      });
     });
 
   // 会话相关命令
@@ -98,6 +119,27 @@ export function createCommands(): Command {
       }
     });
 
+  sessionCmd
+    .command('clear')
+    .description('Delete all sessions')
+    .action(async () => {
+      const readline = await import('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question('确认删除所有会话？(y/N): ', (answer) => {
+        if (answer.toLowerCase() === 'y') {
+          const sessions = Session.listSessions();
+          sessions.forEach(s => Session.deleteSession(s.id));
+          console.log(`已删除 ${sessions.length} 个会话。`);
+        } else {
+          console.log('操作已取消。');
+        }
+        rl.close();
+      });
+    });
+
   // Agent 相关命令
   program
     .command('agents')
@@ -110,8 +152,17 @@ export function createCommands(): Command {
         console.log(`  Provider: ${agentConfig.provider}`);
         console.log(`  Model: ${agentConfig.model}`);
         console.log(`  Temperature: ${agentConfig.temperature}`);
+        console.log(`  Enabled: ${agentConfig.enabled}`);
         console.log();
       }
+    });
+
+  // 卸载命令
+  program
+    .command('uninstall')
+    .description('Uninstall openagents and remove configuration')
+    .action(async () => {
+      await runUninstall();
     });
 
   return program;
