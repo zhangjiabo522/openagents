@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import chalk from 'chalk';
 
 const isWindows = os.platform() === 'win32';
 
@@ -27,14 +28,41 @@ export interface ToolResult {
 
 // ========== 平台自适应命令 ==========
 
+// Linux 命令 → Windows 替代表
+const LINUX_TO_WINDOWS: Record<string, string> = {
+  'uptime': 'systeminfo | findstr /B /C:"System Boot Time"',
+  'free': 'wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value',
+  'df': 'wmic logicaldisk get caption,freespace,size',
+  'top': 'tasklist /FO TABLE',
+  'ps': 'tasklist',
+  'ls': 'dir',
+  'cat': 'type',
+  'grep': 'findstr',
+  'clear': 'cls',
+  'pwd': 'cd',
+  'whoami': 'whoami',
+  'uname -a': 'systeminfo | findstr /B /C:"OS Name" /C:"OS Version"',
+  'hostname': 'hostname',
+};
+
 const executeCommandTool: Tool = {
   name: 'execute_command',
-  description: '执行 shell 命令',
+  description: `执行 shell 命令。当前平台: ${isWindows ? 'Windows (用 dir/cls/findstr/tasklist 等)' : 'Linux/Mac (用 ls/clear/grep/ps 等)'}`,
   parameters: {
     command: { type: 'string', description: '要执行的命令', required: true },
     cwd: { type: 'string', description: '工作目录（可选）' },
   },
   execute: async (params) => {
+    let cmd = params.command;
+
+    // Windows 自动替换常见 Linux 命令
+    if (isWindows) {
+      const cmdBase = cmd.split(' ')[0];
+      if (LINUX_TO_WINDOWS[cmdBase]) {
+        cmd = LINUX_TO_WINDOWS[cmdBase] + cmd.slice(cmdBase.length);
+      }
+    }
+
     try {
       const options: Record<string, unknown> = {
         encoding: 'utf-8',
@@ -42,11 +70,12 @@ const executeCommandTool: Tool = {
         maxBuffer: 1024 * 1024,
       };
       if (params.cwd) options.cwd = params.cwd;
-      const result = execSync(params.command, options);
-      return result.toString().slice(0, 5000); // 限制输出长度
+      const result = execSync(cmd, options);
+      return result.toString().slice(0, 5000);
     } catch (error: unknown) {
       const err = error as { message?: string; stderr?: string };
-      return `命令执行失败: ${err.stderr || err.message || '未知错误'}`;
+      const errMsg = (err.stderr || err.message || '未知错误').slice(0, 300);
+      return `命令执行失败: ${errMsg}`;
     }
   },
 };
@@ -153,21 +182,22 @@ const createDirTool: Tool = {
 
 const getSystemInfoTool: Tool = {
   name: 'get_system_info',
-  description: '获取当前系统信息（OS、CPU、内存等）',
+  description: `获取当前系统信息（OS、CPU、内存等）。当前平台: ${isWindows ? 'Windows' : 'Linux/Mac'}`,
   parameters: {},
   execute: async () => {
-    return JSON.stringify({
-      platform: os.platform(),
-      arch: os.arch(),
-      release: os.release(),
-      hostname: os.hostname(),
-      cpus: os.cpus().length,
-      totalMemory: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
-      freeMemory: `${Math.round(os.freemem() / 1024 / 1024 / 1024)} GB`,
-      homeDir: os.homedir(),
-      cwd: process.cwd(),
-      nodeVersion: process.version,
-    }, null, 2);
+    const platform = os.platform();
+    const info: Record<string, string> = {
+      平台: platform === 'win32' ? 'Windows' : platform,
+      架构: os.arch(),
+      主机名: os.hostname(),
+      CPU核心数: String(os.cpus().length),
+      总内存: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
+      可用内存: `${Math.round(os.freemem() / 1024 / 1024 / 1024)} GB`,
+      主目录: os.homedir(),
+      工作目录: process.cwd(),
+      Node版本: process.version,
+    };
+    return Object.entries(info).map(([k, v]) => `${k}: ${v}`).join('\n');
   },
 };
 
@@ -198,8 +228,10 @@ registerTool(getCwdTool);
 // ========== 工具描述（给 Agent） ==========
 
 export function getToolsDescription(): string {
-  let desc = `你可以使用以下工具来完成任务。工具调用格式:
+  const platform = isWindows ? 'Windows' : 'Linux/Mac';
+  let desc = `你可以使用以下工具来完成任务。当前平台: ${platform}
 
+工具调用格式:
 \`\`\`tool_call
 {"tool": "工具名", "params": {"参数名": "参数值"}}
 \`\`\`
@@ -208,16 +240,25 @@ export function getToolsDescription(): string {
 
 `;
   for (const [name, tool] of tools) {
-    desc += `- **${name}**: ${tool.description}${tool.dangerous ? ' [需要审批]' : ''}\n`;
+    desc += `- ${name}: ${tool.description}${tool.dangerous ? ' [需要审批]' : ''}\n`;
+  }
+
+  if (isWindows) {
+    desc += `
+重要: 当前是 Windows 系统！
+- 不要用 Linux 命令（uptime/free/df/top/ps/ls/cat/grep），用 Windows 等效命令
+- execute_command 会自动替换常见 Linux 命令，但最好直接用 Windows 命令
+- 路径用反斜杠 \\ 或正斜杠 / 均可
+- 推荐用 get_system_info 获取系统信息`;
+  } else {
+    desc += `
+重要: 当前是 Linux/Mac 系统！
+- 路径用正斜杠 /`;
   }
 
   desc += `
-注意事项:
-1. Windows 和 Linux 命令不同，请根据系统选择合适的命令
-2. 使用 get_system_info 获取系统信息
-3. 执行命令时注意路径分隔符（Windows用\\，Linux用/）
-4. 可以一次调用多个工具，每个用单独的 \`\`\`tool_call 代码块
-5. 工具执行结果会自动折叠，你需要总结结果给用户`;
+可以一次调用多个工具，每个用单独的 tool_call 代码块。
+工具执行结果会自动折叠，请用简洁的中文总结给用户。`;
 
   return desc;
 }
@@ -322,20 +363,22 @@ export async function executeToolCalls(
 export function formatToolResultsForUser(results: ToolResult[]): string {
   if (results.length === 0) return '';
 
-  let text = '';
-  for (const result of results) {
-    const status = result.success ? '✓' : '✗';
-    text += `${status} ${result.tool}`;
-
-    if (result.folded) {
-      text += ` (${result.output.length} 字符，已折叠)\n`;
-    } else if (result.output.length < 100) {
-      text += `: ${result.output}\n`;
+  const lines: string[] = [];
+  for (const r of results) {
+    const icon = r.success ? chalk.green('✓') : chalk.red('✗');
+    let detail = '';
+    if (!r.success) {
+      detail = chalk.red(` ${r.output.slice(0, 80)}`);
+    } else if (r.folded) {
+      detail = chalk.gray(` (${r.output.length} 字符)`);
+    } else if (r.output.length < 60) {
+      detail = chalk.gray(`: ${r.output}`);
     } else {
-      text += `: ${result.output.slice(0, 100)}...\n`;
+      detail = chalk.gray(`: ${r.output.slice(0, 60)}...`);
     }
+    lines.push(`  ${icon} ${r.tool}${detail}`);
   }
-  return text;
+  return lines.join('\n');
 }
 
 // 格式化工具结果（完整版本，给 Agent 总结用）

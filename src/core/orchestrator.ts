@@ -162,13 +162,8 @@ export class Orchestrator extends EventEmitter {
     try {
       const result = await agent.processTask(input);
       if (this.aborted) return;
-      let output = result.content;
-      if (result.toolResults) {
-        output += '\n\n---\n' + result.toolResults;
-      }
-      if (result.toolSummary) {
-        output += '\n\n**总结:** ' + result.toolSummary;
-      }
+      // 优先显示工具总结，没有则显示原始内容
+      const output = result.toolSummary || result.content;
       this.emit('response', output);
     } catch (error) {
       if (!this.aborted) this.emit('error', error);
@@ -294,10 +289,8 @@ export class Orchestrator extends EventEmitter {
     const agentStates = Array.from(this.agents.values()).map(a => a.getState());
     const totalTokens = agentStates.reduce((sum, s) => sum + s.tokenUsage, 0);
 
-    let output = `## 任务完成\n\n`;
-    output += `- 任务数: ${this.totalTasks} | Token: ${totalTokens}\n\n`;
+    let output = `任务完成 (${this.totalTasks}项, ${totalTokens} tokens)\n\n`;
 
-    // 只显示 Agent 的总结，不显示原始工具输出
     for (const result of results) {
       if (result.toolSummary) {
         output += result.toolSummary + '\n\n';
@@ -306,16 +299,7 @@ export class Orchestrator extends EventEmitter {
       }
     }
 
-    // 折叠的工具结果
-    const foldedResults = results.filter(r => r.toolResults);
-    if (foldedResults.length > 0) {
-      output += '---\n**工具执行详情 (折叠):**\n';
-      for (const r of foldedResults) {
-        output += r.toolResults + '\n';
-      }
-    }
-
-    return output;
+    return output.trim();
   }
 
   private setStatus(status: OrchestratorStatus): void {

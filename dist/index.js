@@ -446,12 +446,15 @@ import { execSync } from "child_process";
 import * as fs3 from "fs";
 import * as path3 from "path";
 import * as os2 from "os";
+import chalk from "chalk";
 function registerTool(tool) {
   tools.set(tool.name, tool);
 }
 function getToolsDescription() {
-  let desc = `\u4F60\u53EF\u4EE5\u4F7F\u7528\u4EE5\u4E0B\u5DE5\u5177\u6765\u5B8C\u6210\u4EFB\u52A1\u3002\u5DE5\u5177\u8C03\u7528\u683C\u5F0F:
+  const platform2 = isWindows ? "Windows" : "Linux/Mac";
+  let desc = `\u4F60\u53EF\u4EE5\u4F7F\u7528\u4EE5\u4E0B\u5DE5\u5177\u6765\u5B8C\u6210\u4EFB\u52A1\u3002\u5F53\u524D\u5E73\u53F0: ${platform2}
 
+\u5DE5\u5177\u8C03\u7528\u683C\u5F0F:
 \`\`\`tool_call
 {"tool": "\u5DE5\u5177\u540D", "params": {"\u53C2\u6570\u540D": "\u53C2\u6570\u503C"}}
 \`\`\`
@@ -460,16 +463,24 @@ function getToolsDescription() {
 
 `;
   for (const [name, tool] of tools) {
-    desc += `- **${name}**: ${tool.description}${tool.dangerous ? " [\u9700\u8981\u5BA1\u6279]" : ""}
+    desc += `- ${name}: ${tool.description}${tool.dangerous ? " [\u9700\u8981\u5BA1\u6279]" : ""}
 `;
   }
+  if (isWindows) {
+    desc += `
+\u91CD\u8981: \u5F53\u524D\u662F Windows \u7CFB\u7EDF\uFF01
+- \u4E0D\u8981\u7528 Linux \u547D\u4EE4\uFF08uptime/free/df/top/ps/ls/cat/grep\uFF09\uFF0C\u7528 Windows \u7B49\u6548\u547D\u4EE4
+- execute_command \u4F1A\u81EA\u52A8\u66FF\u6362\u5E38\u89C1 Linux \u547D\u4EE4\uFF0C\u4F46\u6700\u597D\u76F4\u63A5\u7528 Windows \u547D\u4EE4
+- \u8DEF\u5F84\u7528\u53CD\u659C\u6760 \\ \u6216\u6B63\u659C\u6760 / \u5747\u53EF
+- \u63A8\u8350\u7528 get_system_info \u83B7\u53D6\u7CFB\u7EDF\u4FE1\u606F`;
+  } else {
+    desc += `
+\u91CD\u8981: \u5F53\u524D\u662F Linux/Mac \u7CFB\u7EDF\uFF01
+- \u8DEF\u5F84\u7528\u6B63\u659C\u6760 /`;
+  }
   desc += `
-\u6CE8\u610F\u4E8B\u9879:
-1. Windows \u548C Linux \u547D\u4EE4\u4E0D\u540C\uFF0C\u8BF7\u6839\u636E\u7CFB\u7EDF\u9009\u62E9\u5408\u9002\u7684\u547D\u4EE4
-2. \u4F7F\u7528 get_system_info \u83B7\u53D6\u7CFB\u7EDF\u4FE1\u606F
-3. \u6267\u884C\u547D\u4EE4\u65F6\u6CE8\u610F\u8DEF\u5F84\u5206\u9694\u7B26\uFF08Windows\u7528\\\uFF0CLinux\u7528/\uFF09
-4. \u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u7528\u5355\u72EC\u7684 \`\`\`tool_call \u4EE3\u7801\u5757
-5. \u5DE5\u5177\u6267\u884C\u7ED3\u679C\u4F1A\u81EA\u52A8\u6298\u53E0\uFF0C\u4F60\u9700\u8981\u603B\u7ED3\u7ED3\u679C\u7ED9\u7528\u6237`;
+\u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u7528\u5355\u72EC\u7684 tool_call \u4EE3\u7801\u5757\u3002
+\u5DE5\u5177\u6267\u884C\u7ED3\u679C\u4F1A\u81EA\u52A8\u6298\u53E0\uFF0C\u8BF7\u7528\u7B80\u6D01\u7684\u4E2D\u6587\u603B\u7ED3\u7ED9\u7528\u6237\u3002`;
   return desc;
 }
 function parseToolCalls(content) {
@@ -532,22 +543,22 @@ async function executeToolCalls(calls, approveCallback) {
 }
 function formatToolResultsForUser(results) {
   if (results.length === 0) return "";
-  let text = "";
-  for (const result of results) {
-    const status = result.success ? "\u2713" : "\u2717";
-    text += `${status} ${result.tool}`;
-    if (result.folded) {
-      text += ` (${result.output.length} \u5B57\u7B26\uFF0C\u5DF2\u6298\u53E0)
-`;
-    } else if (result.output.length < 100) {
-      text += `: ${result.output}
-`;
+  const lines = [];
+  for (const r of results) {
+    const icon = r.success ? chalk.green("\u2713") : chalk.red("\u2717");
+    let detail = "";
+    if (!r.success) {
+      detail = chalk.red(` ${r.output.slice(0, 80)}`);
+    } else if (r.folded) {
+      detail = chalk.gray(` (${r.output.length} \u5B57\u7B26)`);
+    } else if (r.output.length < 60) {
+      detail = chalk.gray(`: ${r.output}`);
     } else {
-      text += `: ${result.output.slice(0, 100)}...
-`;
+      detail = chalk.gray(`: ${r.output.slice(0, 60)}...`);
     }
+    lines.push(`  ${icon} ${r.tool}${detail}`);
   }
-  return text;
+  return lines.join("\n");
 }
 function formatToolResultsForAgent(results) {
   let text = "## \u5DE5\u5177\u6267\u884C\u7ED3\u679C\n\n";
@@ -559,19 +570,41 @@ function formatToolResultsForAgent(results) {
   text += "\u8BF7\u6839\u636E\u4EE5\u4E0A\u5DE5\u5177\u6267\u884C\u7ED3\u679C\uFF0C\u7528\u7B80\u6D01\u7684\u8BED\u8A00\u603B\u7ED3\u7ED9\u7528\u6237\u3002";
   return text;
 }
-var isWindows, executeCommandTool, executeDangerousCommandTool, readFileTool, writeFileTool, listDirTool, createDirTool, getSystemInfoTool, getCwdTool, tools, DANGEROUS_PATTERNS;
+var isWindows, LINUX_TO_WINDOWS, executeCommandTool, executeDangerousCommandTool, readFileTool, writeFileTool, listDirTool, createDirTool, getSystemInfoTool, getCwdTool, tools, DANGEROUS_PATTERNS;
 var init_tools = __esm({
   "src/tools/index.ts"() {
     "use strict";
     isWindows = os2.platform() === "win32";
+    LINUX_TO_WINDOWS = {
+      "uptime": 'systeminfo | findstr /B /C:"System Boot Time"',
+      "free": "wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value",
+      "df": "wmic logicaldisk get caption,freespace,size",
+      "top": "tasklist /FO TABLE",
+      "ps": "tasklist",
+      "ls": "dir",
+      "cat": "type",
+      "grep": "findstr",
+      "clear": "cls",
+      "pwd": "cd",
+      "whoami": "whoami",
+      "uname -a": 'systeminfo | findstr /B /C:"OS Name" /C:"OS Version"',
+      "hostname": "hostname"
+    };
     executeCommandTool = {
       name: "execute_command",
-      description: "\u6267\u884C shell \u547D\u4EE4",
+      description: `\u6267\u884C shell \u547D\u4EE4\u3002\u5F53\u524D\u5E73\u53F0: ${isWindows ? "Windows (\u7528 dir/cls/findstr/tasklist \u7B49)" : "Linux/Mac (\u7528 ls/clear/grep/ps \u7B49)"}`,
       parameters: {
         command: { type: "string", description: "\u8981\u6267\u884C\u7684\u547D\u4EE4", required: true },
         cwd: { type: "string", description: "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u53EF\u9009\uFF09" }
       },
       execute: async (params) => {
+        let cmd = params.command;
+        if (isWindows) {
+          const cmdBase = cmd.split(" ")[0];
+          if (LINUX_TO_WINDOWS[cmdBase]) {
+            cmd = LINUX_TO_WINDOWS[cmdBase] + cmd.slice(cmdBase.length);
+          }
+        }
         try {
           const options = {
             encoding: "utf-8",
@@ -579,11 +612,12 @@ var init_tools = __esm({
             maxBuffer: 1024 * 1024
           };
           if (params.cwd) options.cwd = params.cwd;
-          const result = execSync(params.command, options);
+          const result = execSync(cmd, options);
           return result.toString().slice(0, 5e3);
         } catch (error) {
           const err = error;
-          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${err.stderr || err.message || "\u672A\u77E5\u9519\u8BEF"}`;
+          const errMsg = (err.stderr || err.message || "\u672A\u77E5\u9519\u8BEF").slice(0, 300);
+          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${errMsg}`;
         }
       }
     };
@@ -683,21 +717,22 @@ var init_tools = __esm({
     };
     getSystemInfoTool = {
       name: "get_system_info",
-      description: "\u83B7\u53D6\u5F53\u524D\u7CFB\u7EDF\u4FE1\u606F\uFF08OS\u3001CPU\u3001\u5185\u5B58\u7B49\uFF09",
+      description: `\u83B7\u53D6\u5F53\u524D\u7CFB\u7EDF\u4FE1\u606F\uFF08OS\u3001CPU\u3001\u5185\u5B58\u7B49\uFF09\u3002\u5F53\u524D\u5E73\u53F0: ${isWindows ? "Windows" : "Linux/Mac"}`,
       parameters: {},
       execute: async () => {
-        return JSON.stringify({
-          platform: os2.platform(),
-          arch: os2.arch(),
-          release: os2.release(),
-          hostname: os2.hostname(),
-          cpus: os2.cpus().length,
-          totalMemory: `${Math.round(os2.totalmem() / 1024 / 1024 / 1024)} GB`,
-          freeMemory: `${Math.round(os2.freemem() / 1024 / 1024 / 1024)} GB`,
-          homeDir: os2.homedir(),
-          cwd: process.cwd(),
-          nodeVersion: process.version
-        }, null, 2);
+        const platform2 = os2.platform();
+        const info = {
+          \u5E73\u53F0: platform2 === "win32" ? "Windows" : platform2,
+          \u67B6\u6784: os2.arch(),
+          \u4E3B\u673A\u540D: os2.hostname(),
+          CPU\u6838\u5FC3\u6570: String(os2.cpus().length),
+          \u603B\u5185\u5B58: `${Math.round(os2.totalmem() / 1024 / 1024 / 1024)} GB`,
+          \u53EF\u7528\u5185\u5B58: `${Math.round(os2.freemem() / 1024 / 1024 / 1024)} GB`,
+          \u4E3B\u76EE\u5F55: os2.homedir(),
+          \u5DE5\u4F5C\u76EE\u5F55: process.cwd(),
+          Node\u7248\u672C: process.version
+        };
+        return Object.entries(info).map(([k, v]) => `${k}: ${v}`).join("\n");
       }
     };
     getCwdTool = {
@@ -1249,13 +1284,7 @@ var init_orchestrator = __esm({
         try {
           const result = await agent.processTask(input);
           if (this.aborted) return;
-          let output = result.content;
-          if (result.toolResults) {
-            output += "\n\n---\n" + result.toolResults;
-          }
-          if (result.toolSummary) {
-            output += "\n\n**\u603B\u7ED3:** " + result.toolSummary;
-          }
+          const output = result.toolSummary || result.content;
           this.emit("response", output);
         } catch (error) {
           if (!this.aborted) this.emit("error", error);
@@ -1357,10 +1386,7 @@ ${contextInfo}` : task.description;
       generateSummary(plan, results) {
         const agentStates = Array.from(this.agents.values()).map((a) => a.getState());
         const totalTokens = agentStates.reduce((sum, s) => sum + s.tokenUsage, 0);
-        let output = `## \u4EFB\u52A1\u5B8C\u6210
-
-`;
-        output += `- \u4EFB\u52A1\u6570: ${this.totalTasks} | Token: ${totalTokens}
+        let output = `\u4EFB\u52A1\u5B8C\u6210 (${this.totalTasks}\u9879, ${totalTokens} tokens)
 
 `;
         for (const result of results) {
@@ -1370,14 +1396,7 @@ ${contextInfo}` : task.description;
             output += result.content.slice(0, 300) + "\n\n";
           }
         }
-        const foldedResults = results.filter((r) => r.toolResults);
-        if (foldedResults.length > 0) {
-          output += "---\n**\u5DE5\u5177\u6267\u884C\u8BE6\u60C5 (\u6298\u53E0):**\n";
-          for (const r of foldedResults) {
-            output += r.toolResults + "\n";
-          }
-        }
-        return output;
+        return output.trim();
       }
       setStatus(status) {
         this.status = status;
@@ -1514,7 +1533,7 @@ __export(screen_exports, {
   Screen: () => Screen
 });
 import * as readline2 from "readline";
-import chalk from "chalk";
+import chalk2 from "chalk";
 var Screen;
 var init_screen = __esm({
   "src/tui/screen.ts"() {
@@ -1542,7 +1561,7 @@ var init_screen = __esm({
         this.rl = readline2.createInterface({
           input: process.stdin,
           output: process.stdout,
-          prompt: chalk.green("> "),
+          prompt: chalk2.green("> "),
           historySize: 100
         });
         this.bindEvents();
@@ -1551,9 +1570,9 @@ var init_screen = __esm({
       }
       printWelcome() {
         console.log("");
-        console.log(chalk.bold.cyan("  OpenAgents v3.0"));
-        console.log(chalk.gray("  \u4F1A\u8BDD: ") + this.session.getName());
-        console.log(chalk.gray("  \u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4"));
+        console.log(chalk2.bold.cyan("  OpenAgents v3.0"));
+        console.log(chalk2.gray("  \u4F1A\u8BDD: ") + this.session.getName());
+        console.log(chalk2.gray("  \u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4"));
         console.log("");
       }
       bindEvents() {
@@ -1561,13 +1580,13 @@ var init_screen = __esm({
           this.onLine(line.trim());
         });
         this.rl.on("close", () => {
-          console.log(chalk.gray("\n\u518D\u89C1\uFF01"));
+          console.log(chalk2.gray("\n\u518D\u89C1\uFF01"));
           process.exit(0);
         });
         this.orchestrator.on("response", (text) => {
           this.isLoading = false;
           console.log("");
-          console.log(chalk.yellow.bold("[Agent]"));
+          console.log(chalk2.yellow.bold("[Agent]"));
           console.log(text);
           console.log("");
           this.rl.prompt();
@@ -1575,7 +1594,7 @@ var init_screen = __esm({
         this.orchestrator.on("error", (err) => {
           this.isLoading = false;
           console.log("");
-          console.log(chalk.red(`\u9519\u8BEF: ${err.message}`));
+          console.log(chalk2.red(`\u9519\u8BEF: ${err.message}`));
           console.log("");
           this.rl.prompt();
         });
@@ -1590,7 +1609,7 @@ var init_screen = __esm({
           return;
         }
         this.isLoading = true;
-        console.log(chalk.green(`
+        console.log(chalk2.green(`
 [You] ${line}`));
         this.messages.push({
           id: `msg-${Date.now()}`,
@@ -1604,7 +1623,7 @@ var init_screen = __esm({
           await this.orchestrator.processUserInput(line);
         } catch (error) {
           if (error.name !== "AbortError") {
-            console.log(chalk.red(`\u9519\u8BEF: ${error.message}`));
+            console.log(chalk2.red(`\u9519\u8BEF: ${error.message}`));
           }
           this.isLoading = false;
         }
@@ -1619,7 +1638,7 @@ var init_screen = __esm({
         switch (cmd) {
           case "quit":
           case "exit":
-            console.log(chalk.gray("\u518D\u89C1\uFF01"));
+            console.log(chalk2.gray("\u518D\u89C1\uFF01"));
             process.exit(0);
             break;
           case "clear":
@@ -1628,11 +1647,11 @@ var init_screen = __esm({
           case "reset":
             this.orchestrator.resetAllAgents();
             this.messages = [];
-            console.log(chalk.yellow("\u5DF2\u91CD\u7F6E\u6240\u6709 Agent"));
+            console.log(chalk2.yellow("\u5DF2\u91CD\u7F6E\u6240\u6709 Agent"));
             break;
           case "save":
             this.session.save();
-            console.log(chalk.green("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58"));
+            console.log(chalk2.green("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58"));
             break;
           case "sessions":
             this.showSessions();
@@ -1642,7 +1661,7 @@ var init_screen = __esm({
             break;
           case "help":
             console.log("");
-            console.log(chalk.bold("\u53EF\u7528\u547D\u4EE4:"));
+            console.log(chalk2.bold("\u53EF\u7528\u547D\u4EE4:"));
             console.log("  /quit, /exit   \u9000\u51FA");
             console.log("  /clear         \u6E05\u5C4F");
             console.log("  /reset         \u91CD\u7F6E\u6240\u6709 Agent");
@@ -1653,49 +1672,49 @@ var init_screen = __esm({
             console.log("");
             break;
           default:
-            console.log(chalk.yellow(`\u672A\u77E5\u547D\u4EE4: ${cmd}\uFF0C\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9`));
+            console.log(chalk2.yellow(`\u672A\u77E5\u547D\u4EE4: ${cmd}\uFF0C\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9`));
         }
         this.rl.prompt();
       }
       showSessions() {
         const sessions = Session.listSessions();
         if (sessions.length === 0) {
-          console.log(chalk.gray("\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD"));
+          console.log(chalk2.gray("\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD"));
           return;
         }
         console.log("");
-        console.log(chalk.bold("\u5386\u53F2\u4F1A\u8BDD:"));
+        console.log(chalk2.bold("\u5386\u53F2\u4F1A\u8BDD:"));
         sessions.forEach((s, i) => {
           const d = new Date(s.updatedAt).toLocaleString();
-          console.log(`  ${i + 1}. ${chalk.bold(s.name)} (${s.messages.length}\u6761, ${d})`);
-          console.log(`     ID: ${chalk.gray(s.id)}`);
+          console.log(`  ${i + 1}. ${chalk2.bold(s.name)} (${s.messages.length}\u6761, ${d})`);
+          console.log(`     ID: ${chalk2.gray(s.id)}`);
         });
         console.log("");
       }
       showAgents() {
         const state = this.orchestrator.getState();
         console.log("");
-        console.log(chalk.bold("Agent \u72B6\u6001:"));
+        console.log(chalk2.bold("Agent \u72B6\u6001:"));
         for (const a of state.agents) {
           let icon;
           switch (a.status) {
             case "idle":
-              icon = chalk.gray("\u25CB");
+              icon = chalk2.gray("\u25CB");
               break;
             case "working":
-              icon = chalk.green("\u25CF");
+              icon = chalk2.green("\u25CF");
               break;
             case "thinking":
-              icon = chalk.yellow("\u25D0");
+              icon = chalk2.yellow("\u25D0");
               break;
             case "error":
-              icon = chalk.red("\u2717");
+              icon = chalk2.red("\u2717");
               break;
             default:
               icon = "?";
           }
           const name = a.name || a.type;
-          const tk = a.tokenUsage > 0 ? chalk.gray(` (${a.tokenUsage} tokens)`) : "";
+          const tk = a.tokenUsage > 0 ? chalk2.gray(` (${a.tokenUsage} tokens)`) : "";
           console.log(`  ${icon} ${name}${tk}`);
         }
         console.log("");
@@ -1705,12 +1724,12 @@ var init_screen = __esm({
           const cmd = params.command || "";
           const reason = params.reason || "";
           console.log("");
-          console.log(chalk.yellow.bold("\u26A0 \u9700\u8981\u5BA1\u6279"));
+          console.log(chalk2.yellow.bold("\u26A0 \u9700\u8981\u5BA1\u6279"));
           console.log(`  \u5DE5\u5177: ${tool}`);
-          console.log(`  \u547D\u4EE4: ${chalk.red(cmd)}`);
+          console.log(`  \u547D\u4EE4: ${chalk2.red(cmd)}`);
           if (reason) console.log(`  \u539F\u56E0: ${reason}`);
           console.log("");
-          this.rl.question(chalk.yellow("\u6267\u884C\uFF1F(y/N): "), (answer) => {
+          this.rl.question(chalk2.yellow("\u6267\u884C\uFF1F(y/N): "), (answer) => {
             resolve2(answer.toLowerCase() === "y");
           });
         });
