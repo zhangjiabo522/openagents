@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { Header } from './components/Header.js';
 import { ChatPanel } from './components/ChatPanel.js';
@@ -26,28 +26,58 @@ export function App({ config, sessionName }: AppProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [activePanel, setActivePanel] = useState<'chat' | 'agents'>('chat');
 
+  // 使用 ref 避免不必要的重渲染
+  const orchestratorRef = useRef<Orchestrator | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+
   // 初始化
   useEffect(() => {
     const llm = new LLMClient(config.providers);
     const orch = new Orchestrator(config, llm);
     const sess = new Session(sessionName);
 
+    orchestratorRef.current = orch;
+    sessionRef.current = sess;
     setOrchestrator(orch);
     setSession(sess);
 
-    // 监听消息
+    // 监听消息 - 使用批量更新减少重渲染
     const unsubscribe = messageBus.subscribe((message) => {
-      setMessages(prev => [...prev, message]);
+      messagesRef.current = [...messagesRef.current, message];
       sess.addMessage(message);
     });
 
-    // 监听 Agent 状态变化
-    const updateAgents = () => {
-      setAgents(orch.getState().agents);
-    };
+    // 监听 orchestrator 响应
+    orch.on('response', (response: string) => {
+      const responseMessage: Message = {
+        id: `msg-${Date.now()}`,
+        type: 'agent_message',
+        from: 'orchestrator',
+        content: response,
+        timestamp: new Date(),
+      };
+      messagesRef.current = [...messagesRef.current, responseMessage];
+      setMessages([...messagesRef.current]);
+      setIsLoading(false);
+    });
 
-    orch.on('status_change', updateAgents);
-    orch.on('task_complete', updateAgents);
+    orch.on('error', (error: Error) => {
+      const errorMessage: Message = {
+        id: `msg-${Date.now()}`,
+        type: 'system',
+        from: 'system',
+        content: `错误: ${error.message}`,
+        timestamp: new Date(),
+      };
+      messagesRef.current = [...messagesRef.current, errorMessage];
+      setMessages([...messagesRef.current]);
+      setIsLoading(false);
+    });
+
+    orch.on('status_change', () => {
+      setAgents(orch.getState().agents);
+    });
 
     return () => {
       unsubscribe();
@@ -55,19 +85,26 @@ export function App({ config, sessionName }: AppProps) {
     };
   }, [config, sessionName]);
 
-  // 定期更新 Agent 状态
+  // 定时刷新消息（降低频率避免闪烁）
   useEffect(() => {
-    if (!orchestrator) return;
     const timer = setInterval(() => {
-      setAgents(orchestrator.getState().agents);
-    }, 500);
+      if (messagesRef.current.length !== messages.length) {
+        setMessages([...messagesRef.current]);
+      }
+      if (orchestratorRef.current) {
+        const newAgents = orchestratorRef.current.getState().agents;
+        // 只在状态真正变化时更新
+        if (JSON.stringify(newAgents) !== JSON.stringify(agents)) {
+          setAgents(newAgents);
+        }
+      }
+    }, 500); // 500ms 刷新一次，而不是实时刷新
     return () => clearInterval(timer);
-  }, [orchestrator]);
+  }, [messages.length, agents]);
 
   // 处理用户输入
   const handleInput = useCallback(async (input: string) => {
-    if (!orchestrator || !session) return;
-
+    if (!orchestratorRef.current || !sessionRef.current) return;
     if (input.trim() === '') return;
 
     // 处理命令
@@ -86,11 +123,11 @@ export function App({ config, sessionName }: AppProps) {
       content: input,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMessage]);
-    session.addMessage(userMessage);
+    messagesRef.current = [...messagesRef.current, userMessage];
+    setMessages([...messagesRef.current]);
 
     try {
-      await orchestrator.processUserInput(input);
+      await orchestratorRef.current.processUserInput(input);
     } catch (error) {
       const errorMessage: Message = {
         id: `msg-${Date.now()}`,
@@ -99,36 +136,37 @@ export function App({ config, sessionName }: AppProps) {
         content: `错误: ${(error as Error).message}`,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      messagesRef.current = [...messagesRef.current, errorMessage];
+      setMessages([...messagesRef.current]);
     } finally {
       setIsLoading(false);
-      // 自动保存会话
       if (config.sessions.auto_save) {
-        session.save();
+        sessionRef.current.save();
       }
     }
-  }, [orchestrator, session, config]);
+  }, [config]);
 
   // 处理命令
   const handleCommand = useCallback((input: string) => {
     const cmd = input.slice(1).trim().split(' ')[0];
-    const args = input.slice(1).trim().split(' ').slice(1).join(' ');
 
     switch (cmd) {
       case 'quit':
       case 'exit':
-        session?.save();
+        sessionRef.current?.save();
         exit();
         break;
       case 'clear':
+        messagesRef.current = [];
         setMessages([]);
         break;
       case 'reset':
-        orchestrator?.resetAllAgents();
+        orchestratorRef.current?.resetAllAgents();
+        messagesRef.current = [];
         setMessages([]);
         break;
       case 'save':
-        session?.save();
+        sessionRef.current?.save();
         break;
       case 'agents':
         setActivePanel(prev => prev === 'agents' ? 'chat' : 'agents');
@@ -147,7 +185,8 @@ export function App({ config, sessionName }: AppProps) {
 /help           - 显示帮助信息`,
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, helpMessage]);
+        messagesRef.current = [...messagesRef.current, helpMessage];
+        setMessages([...messagesRef.current]);
         break;
       default:
         const unknownCmd: Message = {
@@ -157,14 +196,15 @@ export function App({ config, sessionName }: AppProps) {
           content: `未知命令: ${cmd}。输入 /help 查看可用命令。`,
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, unknownCmd]);
+        messagesRef.current = [...messagesRef.current, unknownCmd];
+        setMessages([...messagesRef.current]);
     }
-  }, [orchestrator, session, exit]);
+  }, [exit]);
 
   // 快捷键
   useInput((input: string, key: Record<string, boolean>) => {
     if (key.ctrl && input === 'c') {
-      session?.save();
+      sessionRef.current?.save();
       exit();
     }
     if (key.tab) {

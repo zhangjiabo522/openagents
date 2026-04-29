@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import type { Message } from '../../core/message-bus.js';
@@ -9,27 +9,27 @@ interface ChatPanelProps {
   active: boolean;
 }
 
-export function ChatPanel({ messages, isLoading, active }: ChatPanelProps) {
-  const borderColor = active ? 'cyan' : 'gray';
+const formatMessage = (msg: Message) => {
+  switch (msg.type) {
+    case 'user_input':
+      return { prefix: 'You', color: 'green' as const };
+    case 'agent_message':
+      return { prefix: 'Agent', color: 'yellow' as const };
+    case 'task_completed':
+      return { prefix: msg.from, color: 'blue' as const };
+    case 'task_failed':
+      return { prefix: msg.from, color: 'red' as const };
+    case 'agent_status':
+      return { prefix: msg.from, color: 'gray' as const };
+    case 'system':
+      return { prefix: 'System', color: 'magenta' as const };
+    default:
+      return { prefix: msg.from, color: 'white' as const };
+  }
+};
 
-  const formatMessage = (msg: Message) => {
-    switch (msg.type) {
-      case 'user_input':
-        return { prefix: 'You', color: 'green' };
-      case 'agent_message':
-        return { prefix: msg.from, color: 'yellow' };
-      case 'task_completed':
-        return { prefix: msg.from, color: 'blue' };
-      case 'task_failed':
-        return { prefix: msg.from, color: 'red' };
-      case 'agent_status':
-        return { prefix: msg.from, color: 'gray' };
-      case 'system':
-        return { prefix: 'System', color: 'magenta' };
-      default:
-        return { prefix: msg.from, color: 'white' };
-    }
-  };
+export const ChatPanel = memo(function ChatPanel({ messages, isLoading, active }: ChatPanelProps) {
+  const borderColor = active ? 'cyan' : 'gray';
 
   return (
     <Box
@@ -48,11 +48,12 @@ export function ChatPanel({ messages, isLoading, active }: ChatPanelProps) {
         {messages.length === 0 ? (
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              输入消息开始对话...
+              输入消息开始对话...{'\n'}
+              简单问题会直接回答，复杂任务会分解给多个 Agent 协作。
             </Text>
           </Box>
         ) : (
-          messages.slice(-20).map((msg) => {
+          messages.slice(-30).map((msg) => {
             const { prefix, color } = formatMessage(msg);
             return (
               <Box key={msg.id} flexDirection="column" marginBottom={1}>
@@ -78,4 +79,4 @@ export function ChatPanel({ messages, isLoading, active }: ChatPanelProps) {
       </Box>
     </Box>
   );
-}
+});

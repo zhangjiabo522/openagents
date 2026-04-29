@@ -385,106 +385,108 @@ var init_Header = __esm({
 });
 
 // src/tui/components/ChatPanel.tsx
-import React2 from "react";
+import React2, { memo } from "react";
 import { Box as Box2, Text as Text2 } from "ink";
 import Spinner from "ink-spinner";
-function ChatPanel({ messages, isLoading, active }) {
-  const borderColor = active ? "cyan" : "gray";
-  const formatMessage = (msg) => {
-    switch (msg.type) {
-      case "user_input":
-        return { prefix: "You", color: "green" };
-      case "agent_message":
-        return { prefix: msg.from, color: "yellow" };
-      case "task_completed":
-        return { prefix: msg.from, color: "blue" };
-      case "task_failed":
-        return { prefix: msg.from, color: "red" };
-      case "agent_status":
-        return { prefix: msg.from, color: "gray" };
-      case "system":
-        return { prefix: "System", color: "magenta" };
-      default:
-        return { prefix: msg.from, color: "white" };
-    }
-  };
-  return /* @__PURE__ */ React2.createElement(
-    Box2,
-    {
-      flexDirection: "column",
-      flexGrow: 2,
-      borderStyle: "round",
-      borderColor,
-      paddingX: 1,
-      overflow: "hidden"
-    },
-    /* @__PURE__ */ React2.createElement(Text2, { bold: true, color: "cyan" }, "Chat"),
-    /* @__PURE__ */ React2.createElement(Box2, { flexDirection: "column", flexGrow: 1, overflow: "hidden" }, messages.length === 0 ? /* @__PURE__ */ React2.createElement(Box2, { marginTop: 1 }, /* @__PURE__ */ React2.createElement(Text2, { color: "gray", dimColor: true }, "\u8F93\u5165\u6D88\u606F\u5F00\u59CB\u5BF9\u8BDD...")) : messages.slice(-20).map((msg) => {
-      const { prefix, color } = formatMessage(msg);
-      return /* @__PURE__ */ React2.createElement(Box2, { key: msg.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React2.createElement(Text2, null, /* @__PURE__ */ React2.createElement(Text2, { color, bold: true }, "[", prefix, "]"), /* @__PURE__ */ React2.createElement(Text2, { color: "gray" }, " ", msg.timestamp.toLocaleTimeString())), /* @__PURE__ */ React2.createElement(Text2, { wrap: "wrap" }, msg.content));
-    }), isLoading && /* @__PURE__ */ React2.createElement(Box2, null, /* @__PURE__ */ React2.createElement(Text2, { color: "yellow" }, /* @__PURE__ */ React2.createElement(Spinner, { type: "dots" }), " Agent \u6B63\u5728\u5904\u7406...")))
-  );
-}
+var formatMessage, ChatPanel;
 var init_ChatPanel = __esm({
   "src/tui/components/ChatPanel.tsx"() {
     "use strict";
+    formatMessage = (msg) => {
+      switch (msg.type) {
+        case "user_input":
+          return { prefix: "You", color: "green" };
+        case "agent_message":
+          return { prefix: "Agent", color: "yellow" };
+        case "task_completed":
+          return { prefix: msg.from, color: "blue" };
+        case "task_failed":
+          return { prefix: msg.from, color: "red" };
+        case "agent_status":
+          return { prefix: msg.from, color: "gray" };
+        case "system":
+          return { prefix: "System", color: "magenta" };
+        default:
+          return { prefix: msg.from, color: "white" };
+      }
+    };
+    ChatPanel = memo(function ChatPanel2({ messages, isLoading, active }) {
+      const borderColor = active ? "cyan" : "gray";
+      return /* @__PURE__ */ React2.createElement(
+        Box2,
+        {
+          flexDirection: "column",
+          flexGrow: 2,
+          borderStyle: "round",
+          borderColor,
+          paddingX: 1,
+          overflow: "hidden"
+        },
+        /* @__PURE__ */ React2.createElement(Text2, { bold: true, color: "cyan" }, "Chat"),
+        /* @__PURE__ */ React2.createElement(Box2, { flexDirection: "column", flexGrow: 1, overflow: "hidden" }, messages.length === 0 ? /* @__PURE__ */ React2.createElement(Box2, { marginTop: 1 }, /* @__PURE__ */ React2.createElement(Text2, { color: "gray", dimColor: true }, "\u8F93\u5165\u6D88\u606F\u5F00\u59CB\u5BF9\u8BDD...", "\n", "\u7B80\u5355\u95EE\u9898\u4F1A\u76F4\u63A5\u56DE\u7B54\uFF0C\u590D\u6742\u4EFB\u52A1\u4F1A\u5206\u89E3\u7ED9\u591A\u4E2A Agent \u534F\u4F5C\u3002")) : messages.slice(-30).map((msg) => {
+          const { prefix, color } = formatMessage(msg);
+          return /* @__PURE__ */ React2.createElement(Box2, { key: msg.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React2.createElement(Text2, null, /* @__PURE__ */ React2.createElement(Text2, { color, bold: true }, "[", prefix, "]"), /* @__PURE__ */ React2.createElement(Text2, { color: "gray" }, " ", msg.timestamp.toLocaleTimeString())), /* @__PURE__ */ React2.createElement(Text2, { wrap: "wrap" }, msg.content));
+        }), isLoading && /* @__PURE__ */ React2.createElement(Box2, null, /* @__PURE__ */ React2.createElement(Text2, { color: "yellow" }, /* @__PURE__ */ React2.createElement(Spinner, { type: "dots" }), " Agent \u6B63\u5728\u5904\u7406...")))
+      );
+    });
   }
 });
 
 // src/tui/components/AgentStatus.tsx
-import React3 from "react";
+import React3, { memo as memo2 } from "react";
 import { Box as Box3, Text as Text3 } from "ink";
-function AgentStatusPanel({ agents, active }) {
-  const borderColor = active ? "cyan" : "gray";
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "idle":
-        return "\u25CB";
-      case "working":
-        return "\u25CF";
-      case "thinking":
-        return "\u25D0";
-      case "error":
-        return "\u2717";
-      case "stopped":
-        return "\u25A0";
-      default:
-        return "?";
-    }
-  };
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "idle":
-        return "gray";
-      case "working":
-        return "green";
-      case "thinking":
-        return "yellow";
-      case "error":
-        return "red";
-      case "stopped":
-        return "gray";
-      default:
-        return "white";
-    }
-  };
-  return /* @__PURE__ */ React3.createElement(
-    Box3,
-    {
-      flexDirection: "column",
-      width: 30,
-      borderStyle: "round",
-      borderColor,
-      paddingX: 1
-    },
-    /* @__PURE__ */ React3.createElement(Text3, { bold: true, color: "cyan" }, "Agents"),
-    /* @__PURE__ */ React3.createElement(Box3, { flexDirection: "column", marginTop: 1 }, agents.map((agent) => /* @__PURE__ */ React3.createElement(Box3, { key: agent.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React3.createElement(Text3, null, /* @__PURE__ */ React3.createElement(Text3, { color: getStatusColor(agent.status) }, getStatusIcon(agent.status), " "), /* @__PURE__ */ React3.createElement(Text3, { bold: true }, agent.name)), /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, agent.type, " | Token: ", agent.tokenUsage), agent.currentTask && /* @__PURE__ */ React3.createElement(Text3, { color: "yellow", dimColor: true }, "\u5F53\u524D: ", agent.currentTask.description.slice(0, 20), "...")))),
-    active && /* @__PURE__ */ React3.createElement(Box3, { marginTop: 1, borderStyle: "single", borderTop: true, paddingX: 1 }, /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, "Tab \u5207\u6362\u9762\u677F"))
-  );
-}
+var getStatusIcon, getStatusColor, AgentStatusPanel;
 var init_AgentStatus = __esm({
   "src/tui/components/AgentStatus.tsx"() {
     "use strict";
+    getStatusIcon = (status) => {
+      switch (status) {
+        case "idle":
+          return "\u25CB";
+        case "working":
+          return "\u25CF";
+        case "thinking":
+          return "\u25D0";
+        case "error":
+          return "\u2717";
+        case "stopped":
+          return "\u25A0";
+        default:
+          return "?";
+      }
+    };
+    getStatusColor = (status) => {
+      switch (status) {
+        case "idle":
+          return "gray";
+        case "working":
+          return "green";
+        case "thinking":
+          return "yellow";
+        case "error":
+          return "red";
+        case "stopped":
+          return "gray";
+        default:
+          return "white";
+      }
+    };
+    AgentStatusPanel = memo2(function AgentStatusPanel2({ agents, active }) {
+      const borderColor = active ? "cyan" : "gray";
+      return /* @__PURE__ */ React3.createElement(
+        Box3,
+        {
+          flexDirection: "column",
+          width: 30,
+          borderStyle: "round",
+          borderColor,
+          paddingX: 1
+        },
+        /* @__PURE__ */ React3.createElement(Text3, { bold: true, color: "cyan" }, "Agents"),
+        /* @__PURE__ */ React3.createElement(Box3, { flexDirection: "column", marginTop: 1 }, agents.map((agent) => /* @__PURE__ */ React3.createElement(Box3, { key: agent.id, flexDirection: "column", marginBottom: 1 }, /* @__PURE__ */ React3.createElement(Text3, null, /* @__PURE__ */ React3.createElement(Text3, { color: getStatusColor(agent.status) }, getStatusIcon(agent.status), " "), /* @__PURE__ */ React3.createElement(Text3, { bold: true }, agent.name)), /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, agent.type, " | Token: ", agent.tokenUsage), agent.currentTask && /* @__PURE__ */ React3.createElement(Text3, { color: "yellow", dimColor: true }, "\u5F53\u524D: ", agent.currentTask.description.slice(0, 20), "...")))),
+        active && /* @__PURE__ */ React3.createElement(Box3, { marginTop: 1, borderStyle: "single", borderTop: true, paddingX: 1 }, /* @__PURE__ */ React3.createElement(Text3, { color: "gray", dimColor: true }, "Tab \u5207\u6362\u9762\u677F"))
+      );
+    });
   }
 });
 
@@ -585,6 +587,322 @@ var init_message_bus = __esm({
   }
 });
 
+// src/core/shared-context.ts
+import { EventEmitter as EventEmitter2 } from "events";
+var SharedContext, sharedContext;
+var init_shared_context = __esm({
+  "src/core/shared-context.ts"() {
+    "use strict";
+    SharedContext = class extends EventEmitter2 {
+      entries = [];
+      workspace = /* @__PURE__ */ new Map();
+      maxEntries;
+      constructor(maxEntries = 200) {
+        super();
+        this.maxEntries = maxEntries;
+      }
+      // 添加上下文条目
+      addEntry(entry) {
+        const fullEntry = {
+          ...entry,
+          id: `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: /* @__PURE__ */ new Date()
+        };
+        this.entries.push(fullEntry);
+        if (this.entries.length > this.maxEntries) {
+          this.entries.shift();
+        }
+        this.emit("entry_added", fullEntry);
+      }
+      // 获取最近的上下文（用于构建 agent 的上下文窗口）
+      getRecentContext(limit = 20) {
+        return this.entries.slice(-limit);
+      }
+      // 获取特定 agent 的上下文
+      getAgentContext(agentId, limit = 10) {
+        return this.entries.filter((e) => e.agentId === agentId).slice(-limit);
+      }
+      // 获取所有 agent 的最新输出
+      getLatestOutputs() {
+        const outputs = /* @__PURE__ */ new Map();
+        for (const entry of this.entries) {
+          if (entry.type === "result" || entry.type === "code") {
+            outputs.set(entry.agentId, entry.content);
+          }
+        }
+        return outputs;
+      }
+      // 工作区文件操作
+      setWorkspaceFile(path4, content, agentId) {
+        this.workspace.set(path4, {
+          path: path4,
+          content,
+          createdBy: agentId,
+          updatedAt: /* @__PURE__ */ new Date()
+        });
+        this.emit("file_updated", { path: path4, agentId });
+      }
+      getWorkspaceFile(path4) {
+        return this.workspace.get(path4);
+      }
+      getWorkspaceFiles() {
+        return Array.from(this.workspace.values());
+      }
+      // 构建给 agent 的上下文摘要
+      buildContextSummary(agentId) {
+        const recentEntries = this.getRecentContext(15);
+        const files = this.getWorkspaceFiles();
+        let summary = "## \u5171\u4EAB\u5DE5\u4F5C\u533A\u4E0A\u4E0B\u6587\n\n";
+        if (recentEntries.length > 0) {
+          summary += "### \u6700\u8FD1\u6D3B\u52A8\n";
+          for (const entry of recentEntries) {
+            const time = entry.timestamp.toLocaleTimeString();
+            const prefix = entry.agentId === agentId ? "[\u4F60]" : `[${entry.agentName}]`;
+            const contentPreview = entry.content.slice(0, 200);
+            summary += `${time} ${prefix}: ${contentPreview}${entry.content.length > 200 ? "..." : ""}
+`;
+          }
+          summary += "\n";
+        }
+        if (files.length > 0) {
+          summary += "### \u5DE5\u4F5C\u533A\u6587\u4EF6\n";
+          for (const file of files) {
+            summary += `- ${file.path} (\u7531 ${file.createdBy} \u521B\u5EFA)
+`;
+          }
+          summary += "\n";
+        }
+        return summary;
+      }
+      // 清空上下文
+      clear() {
+        this.entries = [];
+        this.workspace.clear();
+        this.emit("cleared");
+      }
+      // 获取条目数
+      getEntryCount() {
+        return this.entries.length;
+      }
+    };
+    sharedContext = new SharedContext();
+  }
+});
+
+// src/tools/index.ts
+import { execSync } from "child_process";
+import * as fs3 from "fs";
+import * as path3 from "path";
+function registerTool(tool) {
+  tools.set(tool.name, tool);
+}
+function getToolsDescription() {
+  let desc = "\u4F60\u53EF\u4EE5\u4F7F\u7528\u4EE5\u4E0B\u5DE5\u5177:\n\n";
+  for (const [name, tool] of tools) {
+    desc += `## ${name}
+${tool.description}
+\u53C2\u6570:
+`;
+    for (const [paramName, param] of Object.entries(tool.parameters)) {
+      desc += `  - ${paramName}: ${param.description}${param.required ? " (\u5FC5\u586B)" : " (\u53EF\u9009)"}
+`;
+    }
+    desc += "\n";
+  }
+  desc += `\u8C03\u7528\u5DE5\u5177\u7684\u683C\u5F0F:
+\`\`\`tool_call
+{"tool": "\u5DE5\u5177\u540D", "params": {"\u53C2\u6570\u540D": "\u53C2\u6570\u503C"}}
+\`\`\`
+
+\u4F60\u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u5DE5\u5177\u8C03\u7528\u7528\u5355\u72EC\u7684\u4EE3\u7801\u5757\u3002`;
+  return desc;
+}
+function parseToolCalls(content) {
+  const calls = [];
+  const regex = /```tool_call\s*\n({[\s\S]*?})\s*\n```/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed.tool && parsed.params) {
+        calls.push(parsed);
+      }
+    } catch {
+    }
+  }
+  return calls;
+}
+async function executeToolCalls(calls) {
+  const results = [];
+  for (const call of calls) {
+    const tool = tools.get(call.tool);
+    if (!tool) {
+      results.push({ tool: call.tool, success: false, output: `\u5DE5\u5177\u4E0D\u5B58\u5728: ${call.tool}` });
+      continue;
+    }
+    try {
+      const output = await tool.execute(call.params);
+      results.push({ tool: call.tool, success: true, output });
+    } catch (error) {
+      results.push({ tool: call.tool, success: false, output: error.message });
+    }
+  }
+  return results;
+}
+var executeCommandTool, readFileTool, writeFileTool, listDirTool, createDirTool, existsTool, deleteFileTool, tools;
+var init_tools = __esm({
+  "src/tools/index.ts"() {
+    "use strict";
+    executeCommandTool = {
+      name: "execute_command",
+      description: "\u6267\u884C shell \u547D\u4EE4\uFF08Linux/Windows\uFF09",
+      parameters: {
+        command: { type: "string", description: "\u8981\u6267\u884C\u7684\u547D\u4EE4", required: true },
+        cwd: { type: "string", description: "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u53EF\u9009\uFF09" }
+      },
+      execute: async (params) => {
+        try {
+          const options = { encoding: "utf-8", timeout: 3e4 };
+          if (params.cwd) options.cwd = params.cwd;
+          const result = execSync(params.command, options);
+          return result.toString();
+        } catch (error) {
+          return `\u547D\u4EE4\u6267\u884C\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    readFileTool = {
+      name: "read_file",
+      description: "\u8BFB\u53D6\u6587\u4EF6\u5185\u5BB9",
+      parameters: {
+        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true },
+        encoding: { type: "string", description: "\u7F16\u7801\uFF08\u9ED8\u8BA4 utf-8\uFF09" }
+      },
+      execute: async (params) => {
+        try {
+          const filePath = path3.resolve(params.path);
+          if (!fs3.existsSync(filePath)) return `\u6587\u4EF6\u4E0D\u5B58\u5728: ${filePath}`;
+          return fs3.readFileSync(filePath, params.encoding || "utf-8");
+        } catch (error) {
+          return `\u8BFB\u53D6\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    writeFileTool = {
+      name: "write_file",
+      description: "\u5199\u5165\u6587\u4EF6\u5185\u5BB9\uFF08\u4F1A\u521B\u5EFA\u76EE\u5F55\uFF09",
+      parameters: {
+        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true },
+        content: { type: "string", description: "\u6587\u4EF6\u5185\u5BB9", required: true }
+      },
+      execute: async (params) => {
+        try {
+          const filePath = path3.resolve(params.path);
+          const dir = path3.dirname(filePath);
+          if (!fs3.existsSync(dir)) fs3.mkdirSync(dir, { recursive: true });
+          fs3.writeFileSync(filePath, params.content, "utf-8");
+          return `\u6587\u4EF6\u5DF2\u5199\u5165: ${filePath}`;
+        } catch (error) {
+          return `\u5199\u5165\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    listDirTool = {
+      name: "list_directory",
+      description: "\u5217\u51FA\u76EE\u5F55\u5185\u5BB9",
+      parameters: {
+        path: { type: "string", description: "\u76EE\u5F55\u8DEF\u5F84", required: true },
+        recursive: { type: "string", description: "\u662F\u5426\u9012\u5F52\uFF08true/false\uFF09" }
+      },
+      execute: async (params) => {
+        try {
+          const dirPath = path3.resolve(params.path);
+          if (!fs3.existsSync(dirPath)) return `\u76EE\u5F55\u4E0D\u5B58\u5728: ${dirPath}`;
+          if (params.recursive === "true") {
+            const files = [];
+            const walk = (dir) => {
+              const entries = fs3.readdirSync(dir, { withFileTypes: true });
+              for (const entry of entries) {
+                const fullPath = path3.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  walk(fullPath);
+                } else {
+                  files.push(fullPath);
+                }
+              }
+            };
+            walk(dirPath);
+            return files.join("\n");
+          } else {
+            return fs3.readdirSync(dirPath).join("\n");
+          }
+        } catch (error) {
+          return `\u5217\u51FA\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    createDirTool = {
+      name: "create_directory",
+      description: "\u521B\u5EFA\u76EE\u5F55",
+      parameters: {
+        path: { type: "string", description: "\u76EE\u5F55\u8DEF\u5F84", required: true }
+      },
+      execute: async (params) => {
+        try {
+          const dirPath = path3.resolve(params.path);
+          fs3.mkdirSync(dirPath, { recursive: true });
+          return `\u76EE\u5F55\u5DF2\u521B\u5EFA: ${dirPath}`;
+        } catch (error) {
+          return `\u521B\u5EFA\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    existsTool = {
+      name: "check_exists",
+      description: "\u68C0\u67E5\u6587\u4EF6\u6216\u76EE\u5F55\u662F\u5426\u5B58\u5728",
+      parameters: {
+        path: { type: "string", description: "\u8DEF\u5F84", required: true }
+      },
+      execute: async (params) => {
+        const p = path3.resolve(params.path);
+        const exists = fs3.existsSync(p);
+        const stat = exists ? fs3.statSync(p) : null;
+        return JSON.stringify({
+          exists,
+          isFile: stat?.isFile() || false,
+          isDirectory: stat?.isDirectory() || false,
+          size: stat?.size || 0
+        });
+      }
+    };
+    deleteFileTool = {
+      name: "delete_file",
+      description: "\u5220\u9664\u6587\u4EF6",
+      parameters: {
+        path: { type: "string", description: "\u6587\u4EF6\u8DEF\u5F84", required: true }
+      },
+      execute: async (params) => {
+        try {
+          const filePath = path3.resolve(params.path);
+          if (!fs3.existsSync(filePath)) return `\u6587\u4EF6\u4E0D\u5B58\u5728: ${filePath}`;
+          fs3.unlinkSync(filePath);
+          return `\u6587\u4EF6\u5DF2\u5220\u9664: ${filePath}`;
+        } catch (error) {
+          return `\u5220\u9664\u5931\u8D25: ${error.message}`;
+        }
+      }
+    };
+    tools = /* @__PURE__ */ new Map();
+    registerTool(executeCommandTool);
+    registerTool(readFileTool);
+    registerTool(writeFileTool);
+    registerTool(listDirTool);
+    registerTool(createDirTool);
+    registerTool(existsTool);
+    registerTool(deleteFileTool);
+  }
+});
+
 // src/agents/base-agent.ts
 import { v4 as uuidv42 } from "uuid";
 var BaseAgent;
@@ -592,6 +910,8 @@ var init_base_agent = __esm({
   "src/agents/base-agent.ts"() {
     "use strict";
     init_message_bus();
+    init_shared_context();
+    init_tools();
     BaseAgent = class {
       id;
       name;
@@ -603,6 +923,7 @@ var init_base_agent = __esm({
       currentTask;
       tasks = [];
       tokenUsage = 0;
+      useTools = true;
       constructor(name, type, config, llm) {
         this.id = `agent-${type}-${uuidv42().slice(0, 8)}`;
         this.name = name;
@@ -612,6 +933,18 @@ var init_base_agent = __esm({
         messageBus.subscribeToAgent(this.id, (msg) => this.handleMessage(msg));
       }
       handleMessage(message) {
+      }
+      // 获取带工具描述的 system prompt
+      getFullSystemPrompt() {
+        let prompt = this.getSystemPrompt();
+        if (this.useTools) {
+          prompt += "\n\n" + getToolsDescription();
+        }
+        const contextSummary = sharedContext.buildContextSummary(this.id);
+        if (contextSummary.length > 50) {
+          prompt += "\n\n" + contextSummary;
+        }
+        return prompt;
       }
       async processTask(taskDescription) {
         const task = {
@@ -623,15 +956,21 @@ var init_base_agent = __esm({
         this.currentTask = task;
         this.tasks.push(task);
         this.setStatus("working");
+        sharedContext.addEntry({
+          agentId: this.id,
+          agentName: this.name,
+          type: "task",
+          content: taskDescription
+        });
         messageBus.publish({
           type: "agent_status",
           from: this.id,
-          content: `${this.name} \u5F00\u59CB\u5904\u7406\u4EFB\u52A1: ${taskDescription}`,
+          content: `${this.name} \u5F00\u59CB\u5904\u7406: ${taskDescription.slice(0, 100)}`,
           metadata: { agentId: this.id, taskId: task.id }
         });
         try {
           const messages = [
-            { role: "system", content: this.getSystemPrompt() },
+            { role: "system", content: this.getFullSystemPrompt() },
             ...this.conversationHistory,
             { role: "user", content: taskDescription }
           ];
@@ -645,22 +984,43 @@ var init_base_agent = __esm({
             }
           );
           this.tokenUsage += response.usage?.total_tokens || 0;
+          let finalContent = response.content;
+          if (this.useTools) {
+            const toolCalls = parseToolCalls(response.content);
+            if (toolCalls.length > 0) {
+              const results = await executeToolCalls(toolCalls);
+              const toolResultsText = this.formatToolResults(results);
+              finalContent += "\n\n" + toolResultsText;
+              sharedContext.addEntry({
+                agentId: this.id,
+                agentName: this.name,
+                type: "info",
+                content: toolResultsText
+              });
+            }
+          }
           this.conversationHistory.push(
             { role: "user", content: taskDescription },
-            { role: "assistant", content: response.content }
+            { role: "assistant", content: finalContent }
           );
           task.status = "completed";
-          task.result = response.content;
+          task.result = finalContent;
           task.completedAt = /* @__PURE__ */ new Date();
           this.currentTask = void 0;
           this.setStatus("idle");
+          sharedContext.addEntry({
+            agentId: this.id,
+            agentName: this.name,
+            type: "result",
+            content: finalContent
+          });
           messageBus.publish({
             type: "task_completed",
             from: this.id,
-            content: response.content,
+            content: finalContent,
             metadata: { agentId: this.id, taskId: task.id }
           });
-          return response.content;
+          return finalContent;
         } catch (error) {
           task.status = "failed";
           task.result = error.message;
@@ -685,9 +1045,15 @@ var init_base_agent = __esm({
         this.currentTask = task;
         this.tasks.push(task);
         this.setStatus("working");
+        sharedContext.addEntry({
+          agentId: this.id,
+          agentName: this.name,
+          type: "task",
+          content: taskDescription
+        });
         try {
           const messages = [
-            { role: "system", content: this.getSystemPrompt() },
+            { role: "system", content: this.getFullSystemPrompt() },
             ...this.conversationHistory,
             { role: "user", content: taskDescription }
           ];
@@ -710,6 +1076,20 @@ var init_base_agent = __esm({
               max_tokens: this.config.max_tokens
             }
           );
+          if (this.useTools) {
+            const toolCalls = parseToolCalls(fullContent);
+            if (toolCalls.length > 0) {
+              const results = await executeToolCalls(toolCalls);
+              const toolResultsText = this.formatToolResults(results);
+              fullContent += "\n\n" + toolResultsText;
+              sharedContext.addEntry({
+                agentId: this.id,
+                agentName: this.name,
+                type: "info",
+                content: toolResultsText
+              });
+            }
+          }
           this.conversationHistory.push(
             { role: "user", content: taskDescription },
             { role: "assistant", content: fullContent }
@@ -719,6 +1099,12 @@ var init_base_agent = __esm({
           task.completedAt = /* @__PURE__ */ new Date();
           this.currentTask = void 0;
           this.setStatus("idle");
+          sharedContext.addEntry({
+            agentId: this.id,
+            agentName: this.name,
+            type: "result",
+            content: fullContent
+          });
           return fullContent;
         } catch (error) {
           task.status = "failed";
@@ -727,6 +1113,16 @@ var init_base_agent = __esm({
           this.setStatus("error");
           throw error;
         }
+      }
+      formatToolResults(results) {
+        let text = "### \u5DE5\u5177\u6267\u884C\u7ED3\u679C\n\n";
+        for (const result of results) {
+          const status = result.success ? "\u2705" : "\u274C";
+          text += `${status} **${result.tool}**
+`;
+          text += "```\n" + result.output.slice(0, 1e3) + "\n```\n\n";
+        }
+        return text;
       }
       getState() {
         return {
@@ -742,12 +1138,6 @@ var init_base_agent = __esm({
       }
       setStatus(status) {
         this.status = status;
-        messageBus.publish({
-          type: "agent_status",
-          from: this.id,
-          content: `${this.name} \u72B6\u6001\u53D8\u66F4\u4E3A: ${status}`,
-          metadata: { agentId: this.id, status }
-        });
       }
       reset() {
         this.conversationHistory = [];
@@ -921,14 +1311,15 @@ var init_agents = __esm({
 });
 
 // src/core/orchestrator.ts
-import { EventEmitter as EventEmitter2 } from "events";
+import { EventEmitter as EventEmitter3 } from "events";
 var Orchestrator;
 var init_orchestrator = __esm({
   "src/core/orchestrator.ts"() {
     "use strict";
     init_agents();
     init_message_bus();
-    Orchestrator = class extends EventEmitter2 {
+    init_shared_context();
+    Orchestrator = class extends EventEmitter3 {
       agents = /* @__PURE__ */ new Map();
       planner;
       llm;
@@ -972,27 +1363,109 @@ var init_orchestrator = __esm({
         }
       }
       async processUserInput(input) {
-        const mode = this.config.orchestrator.collaboration_mode;
         messageBus.publish({
           type: "user_input",
           from: "user",
           content: input
         });
-        switch (mode) {
-          case "hierarchical":
-            await this.processHierarchical(input);
+        this.setStatus("routing");
+        const category = this.categorizeInput(input);
+        switch (category) {
+          case "simple_question":
+            await this.handleSimpleQuestion(input);
             break;
-          case "peer":
-            await this.processPeer(input);
+          case "direct_task":
+            await this.handleDirectTask(input);
             break;
-          case "hybrid":
-            await this.processHybrid(input);
+          case "complex_task":
+            await this.handleComplexTask(input);
+            break;
+          case "discussion":
+            await this.handleDiscussion(input);
             break;
         }
       }
-      async processHierarchical(input) {
+      // 智能分类用户输入
+      categorizeInput(input) {
+        const lower = input.toLowerCase().trim();
+        const simplePatterns = [
+          /^你是谁/,
+          /^你能做什么/,
+          /^你能干什么/,
+          /^介绍一下/,
+          /^what can you/,
+          /^who are you/,
+          /^help$/i,
+          /^帮助$/,
+          /^你好/,
+          /^hello/i,
+          /^hi$/i,
+          /^嗨/,
+          /^什么意思/,
+          /^什么是/,
+          /^怎么理解/
+        ];
+        if (input.length < 30 && simplePatterns.some((p) => p.test(lower))) {
+          return "simple_question";
+        }
+        const discussionPatterns = [
+          /你觉得/,
+          /你认为/,
+          /怎么看/,
+          /有什么看法/,
+          /建议/,
+          /推荐/,
+          /比较.*和/,
+          /优缺点/,
+          /what do you think/,
+          /opinion/,
+          /compare/
+        ];
+        if (discussionPatterns.some((p) => p.test(lower))) {
+          return "discussion";
+        }
+        const complexIndicators = [
+          input.length > 150,
+          /然后.*接着/.test(lower),
+          /首先.*然后.*最后/.test(lower),
+          /创建.*项目.*并且.*配置/.test(lower),
+          /搭建.*包含.*以及/.test(lower),
+          /实现.*功能.*同时.*需要/.test(lower)
+        ];
+        if (complexIndicators.some(Boolean)) {
+          return "complex_task";
+        }
+        return "direct_task";
+      }
+      // 简单问题：直接用第一个 agent 回答
+      async handleSimpleQuestion(input) {
+        this.setStatus("executing");
+        const agent = this.findBestAgent("answer");
+        if (!agent) return;
+        try {
+          const response = await agent.processTask(input);
+          this.emit("response", response);
+        } catch (error) {
+          this.emit("error", error);
+        }
+        this.setStatus("idle");
+      }
+      // 直接任务：交给最合适的 agent
+      async handleDirectTask(input) {
+        this.setStatus("executing");
+        const agent = this.findBestAgentForTask(input);
+        if (!agent) return;
+        try {
+          const response = await agent.processTask(input);
+          this.emit("response", response);
+        } catch (error) {
+          this.emit("error", error);
+        }
+        this.setStatus("idle");
+      }
+      // 复杂任务：分解并协作
+      async handleComplexTask(input) {
         this.setStatus("planning");
-        this.emit("status_change", "planning");
         try {
           const plan = await this.planner.planTask(input);
           this.currentPlan = plan;
@@ -1005,92 +1478,78 @@ var init_orchestrator = __esm({
             metadata: { plan }
           });
           this.setStatus("executing");
-          this.emit("status_change", "executing");
           await this.executePlan(plan);
           this.setStatus("summarizing");
-          this.emit("status_change", "summarizing");
           const summary = this.generateSummary(plan);
-          messageBus.publish({
-            type: "system",
-            from: "orchestrator",
-            content: summary
-          });
-          this.setStatus("idle");
-          this.emit("status_change", "idle");
-          this.emit("complete", summary);
+          this.emit("response", summary);
         } catch (error) {
-          this.setStatus("idle");
           this.emit("error", error);
         }
+        this.setStatus("idle");
       }
-      async processPeer(input) {
+      // 讨论模式：多个 agent 各自回答
+      async handleDiscussion(input) {
         this.setStatus("executing");
-        this.emit("status_change", "executing");
-        const activeAgents = Array.from(this.agents.values()).filter((a) => a.type !== "planner").slice(0, this.config.orchestrator.max_concurrent_agents);
         const responses = [];
+        const activeAgents = Array.from(this.agents.values()).filter((a) => a.type !== "planner").slice(0, 2);
         for (const agent of activeAgents) {
           try {
-            const response = await agent.processTask(input);
-            responses.push(`[${agent.name}] ${response}`);
+            const response = await agent.processTask(
+              `\u7528\u6237\u63D0\u95EE: "${input}"
+\u8BF7\u4ECE\u4F60\u7684\u4E13\u4E1A\u89D2\u5EA6\u56DE\u7B54\u3002`
+            );
+            responses.push(`**${agent.name}**: ${response}`);
             this.completedTasks++;
-          } catch (error) {
-            responses.push(`[${agent.name}] \u5904\u7406\u5931\u8D25: ${error.message}`);
+          } catch {
           }
         }
-        const summary = responses.join("\n\n---\n\n");
-        messageBus.publish({
-          type: "system",
-          from: "orchestrator",
-          content: summary
-        });
+        this.emit("response", responses.join("\n\n---\n\n"));
         this.setStatus("idle");
-        this.emit("status_change", "idle");
-        this.emit("complete", summary);
       }
-      async processHybrid(input) {
-        const isComplex = input.length > 200 || input.includes("\u548C") || input.includes("\u7136\u540E");
-        if (isComplex) {
-          await this.processHierarchical(input);
-        } else {
-          const coder = Array.from(this.agents.values()).find((a) => a.type === "coder");
-          if (coder) {
-            this.setStatus("executing");
-            const response = await coder.processTask(input);
-            messageBus.publish({
-              type: "system",
-              from: "orchestrator",
-              content: response
-            });
-            this.setStatus("idle");
-            this.emit("complete", response);
-          }
+      // 根据任务内容找最合适的 agent
+      findBestAgentForTask(input) {
+        const lower = input.toLowerCase();
+        if (/代码|编程|函数|bug|修复|实现|写.*代码|创建.*文件|编写/.test(lower)) {
+          return this.findAgentByType("coder");
         }
+        if (/审查|review|检查.*代码|优化/.test(lower)) {
+          return this.findAgentByType("reviewer");
+        }
+        if (/调研|研究|分析|对比|选型/.test(lower)) {
+          return this.findAgentByType("researcher");
+        }
+        return this.findAgentByType("coder") || this.findBestAgent("general");
+      }
+      findAgentByType(type) {
+        for (const agent of this.agents.values()) {
+          if (agent.type === type) return agent;
+        }
+        return void 0;
+      }
+      findBestAgent(purpose) {
+        return this.findAgentByType("coder") || this.findAgentByType("researcher") || Array.from(this.agents.values())[0];
       }
       async executePlan(plan) {
         const executed = /* @__PURE__ */ new Set();
-        const taskMap = new Map(plan.tasks.map((t) => [t.id, t]));
         while (executed.size < plan.tasks.length) {
           const readyTasks = plan.tasks.filter(
             (task) => !executed.has(task.id) && task.dependencies.every((dep) => executed.has(dep))
           );
-          if (readyTasks.length === 0) {
-            throw new Error("\u68C0\u6D4B\u5230\u5FAA\u73AF\u4F9D\u8D56");
-          }
+          if (readyTasks.length === 0) break;
           const chunks = this.chunk(readyTasks, this.config.orchestrator.max_concurrent_agents);
           for (const chunk of chunks) {
             await Promise.all(chunk.map(async (task) => {
-              const agent = this.findAgentForTask(task.assignee);
+              const agent = this.findAgentByType(task.assignee) || this.findBestAgent("general");
               if (!agent) {
-                messageBus.publish({
-                  type: "task_failed",
-                  from: "orchestrator",
-                  content: `\u627E\u4E0D\u5230\u9002\u5408\u6267\u884C\u4EFB\u52A1\u7684 Agent: ${task.assignee}`
-                });
                 executed.add(task.id);
                 return;
               }
               try {
-                await agent.processTask(task.description);
+                const contextInfo = sharedContext.buildContextSummary(agent.id);
+                const taskWithContext = contextInfo.length > 50 ? `${task.description}
+
+${contextInfo}` : task.description;
+                await agent.processTask(taskWithContext);
                 executed.add(task.id);
                 this.completedTasks++;
                 this.emit("task_complete", task);
@@ -1101,25 +1560,30 @@ var init_orchestrator = __esm({
           }
         }
       }
-      findAgentForTask(assignee) {
-        for (const agent of this.agents.values()) {
-          if (agent.type === assignee) return agent;
-        }
-        for (const agent of this.agents.values()) {
-          if (agent.name.toLowerCase() === assignee.toLowerCase()) return agent;
-        }
-        return void 0;
-      }
       generateSummary(plan) {
         const agentStates = Array.from(this.agents.values()).map((a) => a.getState());
         const totalTokens = agentStates.reduce((sum, s) => sum + s.tokenUsage, 0);
-        return `\u4EFB\u52A1\u5B8C\u6210\uFF01
+        const latestOutputs = sharedContext.getLatestOutputs();
+        let resultsSection = "";
+        for (const [agentId, output] of latestOutputs) {
+          const agent = this.agents.get(agentId);
+          if (agent) {
+            resultsSection += `
+### ${agent.name}
+${output.slice(0, 500)}${output.length > 500 ? "..." : ""}
+`;
+          }
+        }
+        return `## \u4EFB\u52A1\u5B8C\u6210
 
-\u6267\u884C\u6458\u8981:
+**\u6267\u884C\u6458\u8981:**
 - \u603B\u4EFB\u52A1\u6570: ${this.totalTasks}
 - \u5DF2\u5B8C\u6210: ${this.completedTasks}
-- \u4F7F\u7528 Agent \u6570: ${agentStates.filter((s) => s.messageCount > 0).length}
-- \u603B Token \u7528\u91CF: ${totalTokens}
+- \u4F7F\u7528 Agent: ${agentStates.filter((s) => s.messageCount > 0).length}
+- Token \u7528\u91CF: ${totalTokens}
+
+**\u5404 Agent \u8F93\u51FA:**
+${resultsSection}
 
 ${plan.summary}`;
       }
@@ -1132,6 +1596,7 @@ ${plan.summary}`;
       }
       setStatus(status) {
         this.status = status;
+        this.emit("status_change", status);
       }
       getState() {
         return {
@@ -1152,6 +1617,7 @@ ${plan.summary}`;
         for (const agent of this.agents.values()) {
           agent.reset();
         }
+        sharedContext.clear();
         this.currentPlan = void 0;
         this.completedTasks = 0;
         this.totalTasks = 0;
@@ -1262,7 +1728,7 @@ var App_exports = {};
 __export(App_exports, {
   App: () => App
 });
-import React5, { useState as useState2, useEffect, useCallback } from "react";
+import React5, { useState as useState2, useEffect, useCallback, useRef } from "react";
 import { Box as Box5, useApp, useInput } from "ink";
 function App({ config, sessionName }) {
   const { exit } = useApp();
@@ -1272,35 +1738,69 @@ function App({ config, sessionName }) {
   const [orchestrator, setOrchestrator] = useState2(null);
   const [session, setSession] = useState2(null);
   const [activePanel, setActivePanel] = useState2("chat");
+  const orchestratorRef = useRef(null);
+  const sessionRef = useRef(null);
+  const messagesRef = useRef([]);
   useEffect(() => {
     const llm = new LLMClient(config.providers);
     const orch = new Orchestrator(config, llm);
     const sess = new Session(sessionName);
+    orchestratorRef.current = orch;
+    sessionRef.current = sess;
     setOrchestrator(orch);
     setSession(sess);
     const unsubscribe = messageBus.subscribe((message) => {
-      setMessages((prev) => [...prev, message]);
+      messagesRef.current = [...messagesRef.current, message];
       sess.addMessage(message);
     });
-    const updateAgents = () => {
+    orch.on("response", (response) => {
+      const responseMessage = {
+        id: `msg-${Date.now()}`,
+        type: "agent_message",
+        from: "orchestrator",
+        content: response,
+        timestamp: /* @__PURE__ */ new Date()
+      };
+      messagesRef.current = [...messagesRef.current, responseMessage];
+      setMessages([...messagesRef.current]);
+      setIsLoading(false);
+    });
+    orch.on("error", (error) => {
+      const errorMessage = {
+        id: `msg-${Date.now()}`,
+        type: "system",
+        from: "system",
+        content: `\u9519\u8BEF: ${error.message}`,
+        timestamp: /* @__PURE__ */ new Date()
+      };
+      messagesRef.current = [...messagesRef.current, errorMessage];
+      setMessages([...messagesRef.current]);
+      setIsLoading(false);
+    });
+    orch.on("status_change", () => {
       setAgents(orch.getState().agents);
-    };
-    orch.on("status_change", updateAgents);
-    orch.on("task_complete", updateAgents);
+    });
     return () => {
       unsubscribe();
       orch.removeAllListeners();
     };
   }, [config, sessionName]);
   useEffect(() => {
-    if (!orchestrator) return;
     const timer = setInterval(() => {
-      setAgents(orchestrator.getState().agents);
+      if (messagesRef.current.length !== messages.length) {
+        setMessages([...messagesRef.current]);
+      }
+      if (orchestratorRef.current) {
+        const newAgents = orchestratorRef.current.getState().agents;
+        if (JSON.stringify(newAgents) !== JSON.stringify(agents)) {
+          setAgents(newAgents);
+        }
+      }
     }, 500);
     return () => clearInterval(timer);
-  }, [orchestrator]);
+  }, [messages.length, agents]);
   const handleInput = useCallback(async (input) => {
-    if (!orchestrator || !session) return;
+    if (!orchestratorRef.current || !sessionRef.current) return;
     if (input.trim() === "") return;
     if (input.startsWith("/")) {
       handleCommand(input);
@@ -1314,10 +1814,10 @@ function App({ config, sessionName }) {
       content: input,
       timestamp: /* @__PURE__ */ new Date()
     };
-    setMessages((prev) => [...prev, userMessage]);
-    session.addMessage(userMessage);
+    messagesRef.current = [...messagesRef.current, userMessage];
+    setMessages([...messagesRef.current]);
     try {
-      await orchestrator.processUserInput(input);
+      await orchestratorRef.current.processUserInput(input);
     } catch (error) {
       const errorMessage = {
         id: `msg-${Date.now()}`,
@@ -1326,32 +1826,34 @@ function App({ config, sessionName }) {
         content: `\u9519\u8BEF: ${error.message}`,
         timestamp: /* @__PURE__ */ new Date()
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      messagesRef.current = [...messagesRef.current, errorMessage];
+      setMessages([...messagesRef.current]);
     } finally {
       setIsLoading(false);
       if (config.sessions.auto_save) {
-        session.save();
+        sessionRef.current.save();
       }
     }
-  }, [orchestrator, session, config]);
+  }, [config]);
   const handleCommand = useCallback((input) => {
     const cmd = input.slice(1).trim().split(" ")[0];
-    const args = input.slice(1).trim().split(" ").slice(1).join(" ");
     switch (cmd) {
       case "quit":
       case "exit":
-        session?.save();
+        sessionRef.current?.save();
         exit();
         break;
       case "clear":
+        messagesRef.current = [];
         setMessages([]);
         break;
       case "reset":
-        orchestrator?.resetAllAgents();
+        orchestratorRef.current?.resetAllAgents();
+        messagesRef.current = [];
         setMessages([]);
         break;
       case "save":
-        session?.save();
+        sessionRef.current?.save();
         break;
       case "agents":
         setActivePanel((prev) => prev === "agents" ? "chat" : "agents");
@@ -1370,7 +1872,8 @@ function App({ config, sessionName }) {
 /help           - \u663E\u793A\u5E2E\u52A9\u4FE1\u606F`,
           timestamp: /* @__PURE__ */ new Date()
         };
-        setMessages((prev) => [...prev, helpMessage]);
+        messagesRef.current = [...messagesRef.current, helpMessage];
+        setMessages([...messagesRef.current]);
         break;
       default:
         const unknownCmd = {
@@ -1380,12 +1883,13 @@ function App({ config, sessionName }) {
           content: `\u672A\u77E5\u547D\u4EE4: ${cmd}\u3002\u8F93\u5165 /help \u67E5\u770B\u53EF\u7528\u547D\u4EE4\u3002`,
           timestamp: /* @__PURE__ */ new Date()
         };
-        setMessages((prev) => [...prev, unknownCmd]);
+        messagesRef.current = [...messagesRef.current, unknownCmd];
+        setMessages([...messagesRef.current]);
     }
-  }, [orchestrator, session, exit]);
+  }, [exit]);
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
-      session?.save();
+      sessionRef.current?.save();
       exit();
     }
     if (key.tab) {
@@ -1452,14 +1956,14 @@ var rl = readline.createInterface({
   output: process.stdout
 });
 function ask(question) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     rl.question(question, (answer) => {
-      resolve(answer.trim());
+      resolve2(answer.trim());
     });
   });
 }
 function askPassword(question) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     process.stdout.write(question);
     const stdin = process.stdin;
     const wasRaw = stdin.isRaw;
@@ -1475,7 +1979,7 @@ function askPassword(question) {
         }
         stdin.removeListener("data", onData);
         process.stdout.write("\n");
-        resolve(password);
+        resolve2(password);
       } else if (c === "") {
         process.exit();
       } else if (c === "\x7F" || c === "\b") {
@@ -1779,9 +2283,9 @@ async function runUninstall() {
     rl.close();
     return;
   }
-  const fs3 = await import("fs");
-  if (fs3.existsSync(configDir)) {
-    fs3.rmSync(configDir, { recursive: true, force: true });
+  const fs4 = await import("fs");
+  if (fs4.existsSync(configDir)) {
+    fs4.rmSync(configDir, { recursive: true, force: true });
     console.log(`\u2713 \u5DF2\u5220\u9664\u914D\u7F6E\u76EE\u5F55: ${configDir}`);
   } else {
     console.log(`\u914D\u7F6E\u76EE\u5F55\u4E0D\u5B58\u5728: ${configDir}`);

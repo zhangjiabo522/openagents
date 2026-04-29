@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { AgentState } from '../../agents/base-agent.js';
 
@@ -7,30 +7,30 @@ interface AgentStatusPanelProps {
   active: boolean;
 }
 
-export function AgentStatusPanel({ agents, active }: AgentStatusPanelProps) {
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case 'idle': return '○';
+    case 'working': return '●';
+    case 'thinking': return '◐';
+    case 'error': return '✗';
+    case 'stopped': return '■';
+    default: return '?';
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'idle': return 'gray' as const;
+    case 'working': return 'green' as const;
+    case 'thinking': return 'yellow' as const;
+    case 'error': return 'red' as const;
+    case 'stopped': return 'gray' as const;
+    default: return 'white' as const;
+  }
+};
+
+export const AgentStatusPanel = memo(function AgentStatusPanel({ agents, active }: AgentStatusPanelProps) {
   const borderColor = active ? 'cyan' : 'gray';
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'idle': return '○';
-      case 'working': return '●';
-      case 'thinking': return '◐';
-      case 'error': return '✗';
-      case 'stopped': return '■';
-      default: return '?';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'idle': return 'gray';
-      case 'working': return 'green';
-      case 'thinking': return 'yellow';
-      case 'error': return 'red';
-      case 'stopped': return 'gray';
-      default: return 'white';
-    }
-  };
 
   return (
     <Box
@@ -74,4 +74,4 @@ export function AgentStatusPanel({ agents, active }: AgentStatusPanelProps) {
       )}
     </Box>
   );
-}
+});
