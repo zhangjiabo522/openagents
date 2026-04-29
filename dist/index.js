@@ -1499,14 +1499,16 @@ var screen_exports = {};
 __export(screen_exports, {
   Screen: () => Screen
 });
-import * as blessed from "blessed";
-var Screen;
+import { createRequire } from "module";
+var require2, blessed, Screen;
 var init_screen = __esm({
   "src/tui/screen.ts"() {
     "use strict";
     init_orchestrator();
     init_session();
     init_client();
+    require2 = createRequire(import.meta.url);
+    blessed = require2("blessed");
     Screen = class {
       screen;
       chatBox;
@@ -2429,12 +2431,12 @@ async function startApp(sessionName, resumeSessionId) {
       return;
     }
     const { Screen: Screen2 } = await Promise.resolve().then(() => (init_screen(), screen_exports));
-    const screen2 = new Screen2({
+    const screen = new Screen2({
       config,
       sessionName,
       resumeSessionId
     });
-    screen2.render();
+    screen.render();
   } catch (error) {
     console.error("\u542F\u52A8\u5931\u8D25:", error.message);
     process.exit(1);

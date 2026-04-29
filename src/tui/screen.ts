@@ -1,11 +1,13 @@
-import * as blessed from 'blessed';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const blessed = require('blessed');
+
 import type { AppConfig } from '../config/schema.js';
 import type { Message } from '../core/message-bus.js';
-import type { AgentState, ApproveCallback } from '../agents/base-agent.js';
+import type { AgentState } from '../agents/base-agent.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { Session } from '../core/session.js';
 import { LLMClient } from '../llm/client.js';
-import { isDangerousCommand } from '../tools/index.js';
 
 interface ScreenOptions {
   config: AppConfig;
