@@ -1532,7 +1532,6 @@ var screen_exports = {};
 __export(screen_exports, {
   Screen: () => Screen
 });
-import * as readline2 from "readline";
 import chalk2 from "chalk";
 var Screen;
 var init_screen = __esm({
@@ -1542,11 +1541,14 @@ var init_screen = __esm({
     init_session();
     init_client();
     Screen = class {
-      rl;
       orchestrator;
       session;
       messages = [];
       isLoading = false;
+      inputBuffer = "";
+      cursorPos = 0;
+      // 审批回调
+      approvalResolve;
       constructor(options) {
         const llm = new LLMClient(options.config.providers);
         this.orchestrator = new Orchestrator(options.config, llm);
@@ -1558,52 +1560,101 @@ var init_screen = __esm({
         } else {
           this.session = new Session(options.sessionName);
         }
-        this.rl = readline2.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-          prompt: chalk2.green("> "),
-          historySize: 100
-        });
-        this.bindEvents();
+        this.initInput();
+        this.bindOrchestrator();
         this.printWelcome();
-        this.rl.prompt();
+        this.showPrompt();
       }
+      // ─── 终端输入（raw mode，手动回显，避免中文双重显示）───
+      initInput() {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.setEncoding("utf-8");
+        process.stdin.on("data", (data) => {
+          if (this.approvalResolve) {
+            if (data === "y" || data === "Y") {
+              this.approvalResolve(true);
+              this.approvalResolve = void 0;
+            } else if (data === "n" || data === "N" || data === "\r" || data === "\n") {
+              this.approvalResolve(false);
+              this.approvalResolve = void 0;
+            }
+            return;
+          }
+          this.onKey(data);
+        });
+      }
+      onKey(data) {
+        if (data === "") {
+          this.cleanup();
+          process.exit(0);
+        }
+        if (data === "\r" || data === "\n") {
+          const line = this.inputBuffer.trim();
+          this.inputBuffer = "";
+          this.cursorPos = 0;
+          process.stdout.write("\n");
+          if (line) this.onLine(line);
+          else this.showPrompt();
+          return;
+        }
+        if (data === "\x7F" || data === "\b") {
+          if (this.cursorPos > 0) {
+            this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
+            this.cursorPos--;
+            this.redrawInput();
+          }
+          return;
+        }
+        if (data.startsWith("\x1B")) return;
+        if (data.charCodeAt(0) < 32) return;
+        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + data + this.inputBuffer.slice(this.cursorPos);
+        this.cursorPos += data.length;
+        process.stdout.write(data);
+      }
+      /** 重新绘制输入行（Backspace 后） */
+      redrawInput() {
+        process.stdout.write("\b \b");
+      }
+      showPrompt() {
+        process.stdout.write(chalk2.green("> "));
+      }
+      cleanup() {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.pause();
+      }
+      // ─── 欢迎 ───────────────────────────────────────────
       printWelcome() {
         console.log("");
-        console.log(chalk2.bold.cyan("  OpenAgents v3.0"));
+        console.log(chalk2.bold.cyan("  OpenAgents v3.1"));
         console.log(chalk2.gray("  \u4F1A\u8BDD: ") + this.session.getName());
         console.log(chalk2.gray("  \u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4"));
         console.log("");
       }
-      bindEvents() {
-        this.rl.on("line", (line) => {
-          this.onLine(line.trim());
-        });
-        this.rl.on("close", () => {
-          console.log(chalk2.gray("\n\u518D\u89C1\uFF01"));
-          process.exit(0);
-        });
+      // ─── Orchestrator 事件 ─────────────────────────────
+      bindOrchestrator() {
         this.orchestrator.on("response", (text) => {
           this.isLoading = false;
           console.log("");
           console.log(chalk2.yellow.bold("[Agent]"));
           console.log(text);
           console.log("");
-          this.rl.prompt();
+          this.showPrompt();
         });
         this.orchestrator.on("error", (err) => {
           this.isLoading = false;
           console.log("");
           console.log(chalk2.red(`\u9519\u8BEF: ${err.message}`));
           console.log("");
-          this.rl.prompt();
+          this.showPrompt();
         });
       }
+      // ─── 消息处理 ─────────────────────────────────────
       async onLine(line) {
-        if (!line) {
-          this.rl.prompt();
-          return;
-        }
         if (line.startsWith("/")) {
           this.handleCommand(line);
           return;
@@ -1630,7 +1681,7 @@ var init_screen = __esm({
         this.session.save();
         if (this.isLoading) {
           this.isLoading = false;
-          this.rl.prompt();
+          this.showPrompt();
         }
       }
       handleCommand(input) {
@@ -1638,7 +1689,8 @@ var init_screen = __esm({
         switch (cmd) {
           case "quit":
           case "exit":
-            console.log(chalk2.gray("\u518D\u89C1\uFF01"));
+            console.log(chalk2.gray("\n\u518D\u89C1\uFF01"));
+            this.cleanup();
             process.exit(0);
             break;
           case "clear":
@@ -1674,7 +1726,7 @@ var init_screen = __esm({
           default:
             console.log(chalk2.yellow(`\u672A\u77E5\u547D\u4EE4: ${cmd}\uFF0C\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9`));
         }
-        this.rl.prompt();
+        this.showPrompt();
       }
       showSessions() {
         const sessions = Session.listSessions();
@@ -1687,7 +1739,6 @@ var init_screen = __esm({
         sessions.forEach((s, i) => {
           const d = new Date(s.updatedAt).toLocaleString();
           console.log(`  ${i + 1}. ${chalk2.bold(s.name)} (${s.messages.length}\u6761, ${d})`);
-          console.log(`     ID: ${chalk2.gray(s.id)}`);
         });
         console.log("");
       }
@@ -1719,6 +1770,7 @@ var init_screen = __esm({
         }
         console.log("");
       }
+      // ─── 审批 ───────────────────────────────────────────
       askApproval(tool, params) {
         return new Promise((resolve2) => {
           const cmd = params.command || "";
@@ -1729,9 +1781,8 @@ var init_screen = __esm({
           console.log(`  \u547D\u4EE4: ${chalk2.red(cmd)}`);
           if (reason) console.log(`  \u539F\u56E0: ${reason}`);
           console.log("");
-          this.rl.question(chalk2.yellow("\u6267\u884C\uFF1F(y/N): "), (answer) => {
-            resolve2(answer.toLowerCase() === "y");
-          });
+          process.stdout.write(chalk2.yellow("\u6267\u884C\uFF1F(y/N): "));
+          this.approvalResolve = resolve2;
         });
       }
     };
@@ -2098,7 +2149,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.0.0");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.1.0", "-v, --version", "\u663E\u793A\u7248\u672C\u53F7");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
@@ -2156,8 +2207,8 @@ function createCommands() {
     }
   });
   sessionCmd.command("clear").description("Delete all sessions").action(async () => {
-    const readline3 = await import("readline");
-    const rl2 = readline3.createInterface({
+    const readline2 = await import("readline");
+    const rl2 = readline2.createInterface({
       input: process.stdin,
       output: process.stdout
     });

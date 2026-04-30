@@ -1,4 +1,3 @@
-import * as readline from 'readline';
 import chalk from 'chalk';
 import type { AppConfig } from '../config/schema.js';
 import type { Message } from '../core/message-bus.js';
@@ -13,11 +12,15 @@ interface ScreenOptions {
 }
 
 export class Screen {
-  private rl: readline.Interface;
   private orchestrator: Orchestrator;
   private session: Session;
   private messages: Message[] = [];
   private isLoading = false;
+  private inputBuffer = '';
+  private cursorPos = 0;
+
+  // 审批回调
+  private approvalResolve?: (v: boolean) => void;
 
   constructor(options: ScreenOptions) {
     const llm = new LLMClient(options.config.providers);
@@ -32,43 +35,120 @@ export class Screen {
       this.session = new Session(options.sessionName);
     }
 
-    this.rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      prompt: chalk.green('> '),
-      historySize: 100,
-    });
-
-    this.bindEvents();
+    this.initInput();
+    this.bindOrchestrator();
     this.printWelcome();
-    this.rl.prompt();
+    this.showPrompt();
   }
+
+  // ─── 终端输入（raw mode，手动回显，避免中文双重显示）───
+
+  private initInput(): void {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+    process.stdin.setEncoding('utf-8');
+
+    process.stdin.on('data', (data: string) => {
+      // 审批模式
+      if (this.approvalResolve) {
+        if (data === 'y' || data === 'Y') {
+          this.approvalResolve(true);
+          this.approvalResolve = undefined;
+        } else if (data === 'n' || data === 'N' || data === '\r' || data === '\n') {
+          this.approvalResolve(false);
+          this.approvalResolve = undefined;
+        }
+        return;
+      }
+
+      this.onKey(data);
+    });
+  }
+
+  private onKey(data: string): void {
+    // Ctrl+C
+    if (data === '\x03') {
+      this.cleanup();
+      process.exit(0);
+    }
+
+    // Enter
+    if (data === '\r' || data === '\n') {
+      const line = this.inputBuffer.trim();
+      this.inputBuffer = '';
+      this.cursorPos = 0;
+      process.stdout.write('\n');
+      if (line) this.onLine(line);
+      else this.showPrompt();
+      return;
+    }
+
+    // Backspace
+    if (data === '\x7f' || data === '\b') {
+      if (this.cursorPos > 0) {
+        this.inputBuffer =
+          this.inputBuffer.slice(0, this.cursorPos - 1) +
+          this.inputBuffer.slice(this.cursorPos);
+        this.cursorPos--;
+        this.redrawInput();
+      }
+      return;
+    }
+
+    // 跳过 ESC 序列和其他控制字符
+    if (data.startsWith('\x1b')) return;
+    if (data.charCodeAt(0) < 32) return;
+
+    // 普通字符：手动回显
+    this.inputBuffer =
+      this.inputBuffer.slice(0, this.cursorPos) +
+      data +
+      this.inputBuffer.slice(this.cursorPos);
+    this.cursorPos += data.length;
+
+    // 回显到终端
+    process.stdout.write(data);
+  }
+
+  /** 重新绘制输入行（Backspace 后） */
+  private redrawInput(): void {
+    // 光标退一格，写空格覆盖，再退一格
+    process.stdout.write('\b \b');
+  }
+
+  private showPrompt(): void {
+    process.stdout.write(chalk.green('> '));
+  }
+
+  private cleanup(): void {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    process.stdin.pause();
+  }
+
+  // ─── 欢迎 ───────────────────────────────────────────
 
   private printWelcome(): void {
     console.log('');
-    console.log(chalk.bold.cyan('  OpenAgents v3.0'));
+    console.log(chalk.bold.cyan('  OpenAgents v3.1'));
     console.log(chalk.gray('  会话: ') + this.session.getName());
     console.log(chalk.gray('  输入 /help 查看命令'));
     console.log('');
   }
 
-  private bindEvents(): void {
-    this.rl.on('line', (line: string) => {
-      this.onLine(line.trim());
-    });
+  // ─── Orchestrator 事件 ─────────────────────────────
 
-    this.rl.on('close', () => {
-      console.log(chalk.gray('\n再见！'));
-      process.exit(0);
-    });
-
+  private bindOrchestrator(): void {
     this.orchestrator.on('response', (text: string) => {
       this.isLoading = false;
       console.log('');
       console.log(chalk.yellow.bold('[Agent]'));
       console.log(text);
       console.log('');
-      this.rl.prompt();
+      this.showPrompt();
     });
 
     this.orchestrator.on('error', (err: Error) => {
@@ -76,23 +156,18 @@ export class Screen {
       console.log('');
       console.log(chalk.red(`错误: ${err.message}`));
       console.log('');
-      this.rl.prompt();
+      this.showPrompt();
     });
   }
 
-  private async onLine(line: string): Promise<void> {
-    if (!line) {
-      this.rl.prompt();
-      return;
-    }
+  // ─── 消息处理 ─────────────────────────────────────
 
-    // 命令
+  private async onLine(line: string): Promise<void> {
     if (line.startsWith('/')) {
       this.handleCommand(line);
       return;
     }
 
-    // 发送消息
     this.isLoading = true;
     console.log(chalk.green(`\n[You] ${line}`));
 
@@ -117,7 +192,7 @@ export class Screen {
     this.session.save();
     if (this.isLoading) {
       this.isLoading = false;
-      this.rl.prompt();
+      this.showPrompt();
     }
   }
 
@@ -125,35 +200,29 @@ export class Screen {
     const cmd = input.slice(1).trim().split(' ')[0];
 
     switch (cmd) {
-      case 'quit':
-      case 'exit':
-        console.log(chalk.gray('再见！'));
+      case 'quit': case 'exit':
+        console.log(chalk.gray('\n再见！'));
+        this.cleanup();
         process.exit(0);
         break;
-
       case 'clear':
         console.clear();
         break;
-
       case 'reset':
         this.orchestrator.resetAllAgents();
         this.messages = [];
         console.log(chalk.yellow('已重置所有 Agent'));
         break;
-
       case 'save':
         this.session.save();
         console.log(chalk.green('会话已保存'));
         break;
-
       case 'sessions':
         this.showSessions();
         break;
-
       case 'agents':
         this.showAgents();
         break;
-
       case 'help':
         console.log('');
         console.log(chalk.bold('可用命令:'));
@@ -166,12 +235,11 @@ export class Screen {
         console.log('  /help          帮助');
         console.log('');
         break;
-
       default:
         console.log(chalk.yellow(`未知命令: ${cmd}，输入 /help 查看帮助`));
     }
 
-    this.rl.prompt();
+    this.showPrompt();
   }
 
   private showSessions(): void {
@@ -185,7 +253,6 @@ export class Screen {
     sessions.forEach((s, i) => {
       const d = new Date(s.updatedAt).toLocaleString();
       console.log(`  ${i + 1}. ${chalk.bold(s.name)} (${s.messages.length}条, ${d})`);
-      console.log(`     ID: ${chalk.gray(s.id)}`);
     });
     console.log('');
   }
@@ -210,6 +277,8 @@ export class Screen {
     console.log('');
   }
 
+  // ─── 审批 ───────────────────────────────────────────
+
   private askApproval(tool: string, params: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
       const cmd = params.command || '';
@@ -220,10 +289,8 @@ export class Screen {
       console.log(`  命令: ${chalk.red(cmd)}`);
       if (reason) console.log(`  原因: ${reason}`);
       console.log('');
-
-      this.rl.question(chalk.yellow('执行？(y/N): '), (answer) => {
-        resolve(answer.toLowerCase() === 'y');
-      });
+      process.stdout.write(chalk.yellow('执行？(y/N): '));
+      this.approvalResolve = resolve;
     });
   }
 }
