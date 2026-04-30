@@ -1539,63 +1539,51 @@ function isHtml(text) {
   return tags !== null && tags.length > 2;
 }
 function renderMarkdown(text) {
-  if (isHtml(text)) {
-    text = stripHtml(text);
-  }
+  if (isHtml(text)) text = stripHtml(text);
   const lines = text.split("\n");
   const result = [];
-  let inCodeBlock = false;
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+  let inCode = false;
+  for (const raw of lines) {
+    const line = raw;
     if (line.trimStart().startsWith("```")) {
-      if (inCodeBlock) {
-        result.push(chalk2.gray("  \u2514" + "\u2500".repeat(40)));
-        inCodeBlock = false;
-      } else {
-        result.push(chalk2.gray("  \u250C" + "\u2500".repeat(40)));
-        inCodeBlock = true;
-      }
+      result.push(inCode ? chalk2.gray(" \u2514" + "\u2500".repeat(36)) : chalk2.gray(" \u250C" + "\u2500".repeat(36)));
+      inCode = !inCode;
       continue;
     }
-    if (inCodeBlock) {
-      result.push(chalk2.gray("  \u2502 ") + chalk2.white(line));
+    if (inCode) {
+      result.push(chalk2.gray(" \u2502") + chalk2.white(line));
       continue;
     }
-    if (/^#{1,6}\s/.test(line)) {
-      const level = line.match(/^(#{1,6})/)?.[1].length || 1;
-      const text2 = line.replace(/^#{1,6}\s+/, "");
-      if (level === 1) {
-        result.push(chalk2.bold.cyan.underline(text2));
-      } else if (level === 2) {
-        result.push(chalk2.bold.cyan(text2));
-      } else {
-        result.push(chalk2.bold(text2));
-      }
-      result.push("");
+    const hMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (hMatch) {
+      const lvl = hMatch[1].length;
+      const txt = hMatch[2];
+      result.push(lvl <= 2 ? chalk2.bold.cyan(txt) : chalk2.bold(txt));
       continue;
     }
     if (/^\s*[-*+]\s/.test(line)) {
-      const indent = line.match(/^(\s*)/)?.[1] || "";
       const content = line.replace(/^\s*[-*+]\s+/, "");
-      result.push(indent + chalk2.white("\u2022 ") + inlineFormat(content));
+      result.push(chalk2.gray("\u2022") + " " + inlineFormat(content));
       continue;
     }
-    if (/^\s*\d+\.\s/.test(line)) {
-      const indent = line.match(/^(\s*)/)?.[1] || "";
-      const num = line.match(/^\s*(\d+)\./)?.[1] || "1";
-      const content = line.replace(/^\s*\d+\.\s+/, "");
-      result.push(indent + chalk2.white(`${num}. `) + inlineFormat(content));
+    const olMatch = line.match(/^\s*(\d+)\.\s+(.+)/);
+    if (olMatch) {
+      result.push(chalk2.gray(olMatch[1] + ".") + " " + inlineFormat(olMatch[2]));
       continue;
     }
     if (/^>\s/.test(line)) {
-      result.push(chalk2.gray("  \u2502 ") + chalk2.gray.italic(line.replace(/^>\s*/, "")));
+      result.push(chalk2.gray("\u2502 ") + chalk2.gray.italic(line.replace(/^>\s*/, "")));
       continue;
     }
     if (/^[-*_]{3,}\s*$/.test(line.trim())) {
-      result.push(chalk2.gray("\u2500".repeat(44)));
+      result.push(chalk2.gray("\u2500".repeat(40)));
       continue;
     }
-    result.push("  " + inlineFormat(line));
+    if (line.trim() === "") {
+      result.push("");
+      continue;
+    }
+    result.push(inlineFormat(line));
   }
   return result.join("\n");
 }

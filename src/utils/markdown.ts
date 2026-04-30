@@ -25,83 +25,65 @@ function isHtml(text: string): boolean {
   return tags !== null && tags.length > 2;
 }
 
-/** 手动渲染 markdown → chalk 终端输出 */
+/** 手动渲染 markdown → chalk 终端输出（紧凑版） */
 export function renderMarkdown(text: string): string {
-  // 先去掉 HTML
-  if (isHtml(text)) {
-    text = stripHtml(text);
-  }
+  if (isHtml(text)) text = stripHtml(text);
 
   const lines = text.split('\n');
   const result: string[] = [];
-  let inCodeBlock = false;
+  let inCode = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+  for (const raw of lines) {
+    const line = raw;
 
     // 代码块
     if (line.trimStart().startsWith('```')) {
-      if (inCodeBlock) {
-        result.push(chalk.gray('  └' + '─'.repeat(40)));
-        inCodeBlock = false;
-      } else {
-        result.push(chalk.gray('  ┌' + '─'.repeat(40)));
-        inCodeBlock = true;
-      }
+      result.push(inCode ? chalk.gray(' └' + '─'.repeat(36)) : chalk.gray(' ┌' + '─'.repeat(36)));
+      inCode = !inCode;
       continue;
     }
-
-    if (inCodeBlock) {
-      result.push(chalk.gray('  │ ') + chalk.white(line));
-      continue;
-    }
+    if (inCode) { result.push(chalk.gray(' │') + chalk.white(line)); continue; }
 
     // 标题
-    if (/^#{1,6}\s/.test(line)) {
-      const level = line.match(/^(#{1,6})/)?.[1].length || 1;
-      const text = line.replace(/^#{1,6}\s+/, '');
-      if (level === 1) {
-        result.push(chalk.bold.cyan.underline(text));
-      } else if (level === 2) {
-        result.push(chalk.bold.cyan(text));
-      } else {
-        result.push(chalk.bold(text));
-      }
-      result.push('');
+    const hMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (hMatch) {
+      const lvl = hMatch[1].length;
+      const txt = hMatch[2];
+      result.push(lvl <= 2 ? chalk.bold.cyan(txt) : chalk.bold(txt));
       continue;
     }
 
     // 无序列表
     if (/^\s*[-*+]\s/.test(line)) {
-      const indent = line.match(/^(\s*)/)?.[1] || '';
       const content = line.replace(/^\s*[-*+]\s+/, '');
-      result.push(indent + chalk.white('• ') + inlineFormat(content));
+      result.push(chalk.gray('•') + ' ' + inlineFormat(content));
       continue;
     }
 
     // 有序列表
-    if (/^\s*\d+\.\s/.test(line)) {
-      const indent = line.match(/^(\s*)/)?.[1] || '';
-      const num = line.match(/^\s*(\d+)\./)?.[1] || '1';
-      const content = line.replace(/^\s*\d+\.\s+/, '');
-      result.push(indent + chalk.white(`${num}. `) + inlineFormat(content));
+    const olMatch = line.match(/^\s*(\d+)\.\s+(.+)/);
+    if (olMatch) {
+      result.push(chalk.gray(olMatch[1] + '.') + ' ' + inlineFormat(olMatch[2]));
       continue;
     }
 
     // 引用
     if (/^>\s/.test(line)) {
-      result.push(chalk.gray('  │ ') + chalk.gray.italic(line.replace(/^>\s*/, '')));
+      result.push(chalk.gray('│ ') + chalk.gray.italic(line.replace(/^>\s*/, '')));
       continue;
     }
 
     // 分割线
     if (/^[-*_]{3,}\s*$/.test(line.trim())) {
-      result.push(chalk.gray('─'.repeat(44)));
+      result.push(chalk.gray('─'.repeat(40)));
       continue;
     }
 
+    // 空行
+    if (line.trim() === '') { result.push(''); continue; }
+
     // 普通行
-    result.push('  ' + inlineFormat(line));
+    result.push(inlineFormat(line));
   }
 
   return result.join('\n');
