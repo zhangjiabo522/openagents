@@ -2185,7 +2185,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.2.0", "-v, --version", "\u663E\u793A\u7248\u672C\u53F7");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.3.0", "-v, --version", "\u663E\u793A\u7248\u672C\u53F7");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
