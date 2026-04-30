@@ -1533,8 +1533,14 @@ var init_client = __esm({
 import { Marked } from "marked";
 import markedTerminal from "marked-terminal";
 import chalk2 from "chalk";
+function stripHtml(html) {
+  return html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n\n").replace(/<\/div>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<\/h[1-6]>/gi, "\n\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
 function renderMarkdown(text) {
   try {
+    if (/<[a-z][\s\S]*>/i.test(text) && !text.includes("```")) {
+      text = stripHtml(text);
+    }
     const result = marked.parse(text);
     if (typeof result === "string") return result;
     return text;
