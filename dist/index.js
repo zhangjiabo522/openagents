@@ -1595,7 +1595,7 @@ var init_screen = __esm({
           const line = this.inputBuffer.trim();
           this.inputBuffer = "";
           this.cursorPos = 0;
-          process.stdout.write("\n");
+          process.stdout.write("\r\x1B[K\n");
           if (line) this.onLine(line);
           else this.showPrompt();
           return;
@@ -1604,7 +1604,7 @@ var init_screen = __esm({
           if (this.cursorPos > 0) {
             this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
             this.cursorPos--;
-            this.redrawInput();
+            this.redrawInputLine();
           }
           return;
         }
@@ -1612,11 +1612,11 @@ var init_screen = __esm({
         if (data.charCodeAt(0) < 32) return;
         this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + data + this.inputBuffer.slice(this.cursorPos);
         this.cursorPos += data.length;
-        process.stdout.write(data);
+        this.redrawInputLine();
       }
-      /** 重新绘制输入行（Backspace 后） */
-      redrawInput() {
-        process.stdout.write("\b \b");
+      /** 重绘输入行：清行 → 写提示符+缓冲区 */
+      redrawInputLine() {
+        process.stdout.write("\r\x1B[K" + chalk2.green("> ") + this.inputBuffer);
       }
       showPrompt() {
         process.stdout.write(chalk2.green("> "));

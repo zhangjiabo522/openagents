@@ -79,7 +79,7 @@ export class Screen {
       const line = this.inputBuffer.trim();
       this.inputBuffer = '';
       this.cursorPos = 0;
-      process.stdout.write('\n');
+      process.stdout.write('\r\x1b[K\n'); // 清行后换行
       if (line) this.onLine(line);
       else this.showPrompt();
       return;
@@ -92,7 +92,7 @@ export class Screen {
           this.inputBuffer.slice(0, this.cursorPos - 1) +
           this.inputBuffer.slice(this.cursorPos);
         this.cursorPos--;
-        this.redrawInput();
+        this.redrawInputLine();
       }
       return;
     }
@@ -101,21 +101,18 @@ export class Screen {
     if (data.startsWith('\x1b')) return;
     if (data.charCodeAt(0) < 32) return;
 
-    // 普通字符：手动回显
+    // 普通字符：不直接回显（避免终端重复），而是重绘整行
     this.inputBuffer =
       this.inputBuffer.slice(0, this.cursorPos) +
       data +
       this.inputBuffer.slice(this.cursorPos);
     this.cursorPos += data.length;
-
-    // 回显到终端
-    process.stdout.write(data);
+    this.redrawInputLine();
   }
 
-  /** 重新绘制输入行（Backspace 后） */
-  private redrawInput(): void {
-    // 光标退一格，写空格覆盖，再退一格
-    process.stdout.write('\b \b');
+  /** 重绘输入行：清行 → 写提示符+缓冲区 */
+  private redrawInputLine(): void {
+    process.stdout.write('\r\x1b[K' + chalk.green('> ') + this.inputBuffer);
   }
 
   private showPrompt(): void {
