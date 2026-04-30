@@ -121,13 +121,11 @@ export class Screen {
     });
 
     // Agent 回复
-    this.orchestrator.on('response', async (data: { agent: string; content: string; toolResults?: string }) => {
+    this.orchestrator.on('response', (data: { agent: string; content: string; toolResults?: string }) => {
       this.isLoading = false;
       console.log('');
       console.log(chalk.yellow.bold(`[${data.agent}]`));
-      // 渲染 markdown（async）
-      const rendered = await renderMarkdown(data.content);
-      console.log(rendered);
+      console.log(renderMarkdown(data.content));
       if (data.toolResults) {
         console.log(chalk.gray('\n--- 工具执行 ---'));
         console.log(chalk.gray(data.toolResults));

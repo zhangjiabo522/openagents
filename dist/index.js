@@ -1530,46 +1530,88 @@ var init_client = __esm({
 });
 
 // src/utils/markdown.ts
-import { Marked } from "marked";
-import markedTerminal from "marked-terminal";
 import chalk2 from "chalk";
 function stripHtml(html) {
   return html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<\/div>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<\/h[1-6]>/gi, "\n\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 function isHtml(text) {
-  const htmlTags = text.match(/<[a-z][^>]*>/gi);
-  return htmlTags !== null && htmlTags.length > 2;
+  const tags = text.match(/<[a-z][^>]*>/gi);
+  return tags !== null && tags.length > 2;
 }
-async function renderMarkdown(text) {
-  try {
-    if (isHtml(text)) {
-      text = stripHtml(text);
-    }
-    const result = await marked.parse(text);
-    return result.trimEnd();
-  } catch {
-    return text;
+function renderMarkdown(text) {
+  if (isHtml(text)) {
+    text = stripHtml(text);
   }
+  const lines = text.split("\n");
+  const result = [];
+  let inCodeBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (line.trimStart().startsWith("```")) {
+      if (inCodeBlock) {
+        result.push(chalk2.gray("  \u2514" + "\u2500".repeat(40)));
+        inCodeBlock = false;
+      } else {
+        result.push(chalk2.gray("  \u250C" + "\u2500".repeat(40)));
+        inCodeBlock = true;
+      }
+      continue;
+    }
+    if (inCodeBlock) {
+      result.push(chalk2.gray("  \u2502 ") + chalk2.white(line));
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      const level = line.match(/^(#{1,6})/)?.[1].length || 1;
+      const text2 = line.replace(/^#{1,6}\s+/, "");
+      if (level === 1) {
+        result.push(chalk2.bold.cyan.underline(text2));
+      } else if (level === 2) {
+        result.push(chalk2.bold.cyan(text2));
+      } else {
+        result.push(chalk2.bold(text2));
+      }
+      result.push("");
+      continue;
+    }
+    if (/^\s*[-*+]\s/.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] || "";
+      const content = line.replace(/^\s*[-*+]\s+/, "");
+      result.push(indent + chalk2.white("\u2022 ") + inlineFormat(content));
+      continue;
+    }
+    if (/^\s*\d+\.\s/.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] || "";
+      const num = line.match(/^\s*(\d+)\./)?.[1] || "1";
+      const content = line.replace(/^\s*\d+\.\s+/, "");
+      result.push(indent + chalk2.white(`${num}. `) + inlineFormat(content));
+      continue;
+    }
+    if (/^>\s/.test(line)) {
+      result.push(chalk2.gray("  \u2502 ") + chalk2.gray.italic(line.replace(/^>\s*/, "")));
+      continue;
+    }
+    if (/^[-*_]{3,}\s*$/.test(line.trim())) {
+      result.push(chalk2.gray("\u2500".repeat(44)));
+      continue;
+    }
+    result.push("  " + inlineFormat(line));
+  }
+  return result.join("\n");
 }
-var marked;
+function inlineFormat(text) {
+  text = text.replace(/`([^`]+)`/g, (_, code) => chalk2.gray(`\`${code}\``));
+  text = text.replace(/\*\*(.+?)\*\*/g, (_, t) => chalk2.bold(t));
+  text = text.replace(/__(.+?)__/g, (_, t) => chalk2.bold(t));
+  text = text.replace(/\*(.+?)\*/g, (_, t) => chalk2.italic(t));
+  text = text.replace(/_(.+?)_/g, (_, t) => chalk2.italic(t));
+  text = text.replace(/~~(.+?)~~/g, (_, t) => chalk2.strikethrough(t));
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => chalk2.blue.underline(label) + chalk2.gray(` (${url})`));
+  return text;
+}
 var init_markdown = __esm({
   "src/utils/markdown.ts"() {
     "use strict";
-    marked = new Marked();
-    marked.setOptions({
-      ...markedTerminal,
-      codespan: chalk2.gray,
-      code: chalk2.gray,
-      blockquote: chalk2.gray.italic,
-      heading: chalk2.bold.cyan,
-      firstHeading: chalk2.bold.cyan.underline,
-      link: chalk2.blue.underline,
-      href: chalk2.blue.underline,
-      strong: chalk2.bold,
-      em: chalk2.italic,
-      del: chalk2.strikethrough,
-      listitem: chalk2.white
-    });
   }
 });
 
@@ -1684,12 +1726,11 @@ ${icon} ${chalk3.bold(info.name)} ${chalk3.gray(info.action)}`;
           if (info.task) line += chalk3.gray(` - ${info.task}`);
           console.log(line);
         });
-        this.orchestrator.on("response", async (data) => {
+        this.orchestrator.on("response", (data) => {
           this.isLoading = false;
           console.log("");
           console.log(chalk3.yellow.bold(`[${data.agent}]`));
-          const rendered = await renderMarkdown(data.content);
-          console.log(rendered);
+          console.log(renderMarkdown(data.content));
           if (data.toolResults) {
             console.log(chalk3.gray("\n--- \u5DE5\u5177\u6267\u884C ---"));
             console.log(chalk3.gray(data.toolResults));
