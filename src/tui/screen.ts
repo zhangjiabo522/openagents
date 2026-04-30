@@ -4,6 +4,7 @@ import type { Message } from '../core/message-bus.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { Session } from '../core/session.js';
 import { LLMClient } from '../llm/client.js';
+import { renderMarkdown } from '../utils/markdown.js';
 
 interface ScreenOptions {
   config: AppConfig;
@@ -124,7 +125,8 @@ export class Screen {
       this.isLoading = false;
       console.log('');
       console.log(chalk.yellow.bold(`[${data.agent}]`));
-      console.log(data.content);
+      // 渲染 markdown
+      console.log(renderMarkdown(data.content));
       if (data.toolResults) {
         console.log(chalk.gray('\n--- 工具执行 ---'));
         console.log(chalk.gray(data.toolResults));

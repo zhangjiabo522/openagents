@@ -447,6 +447,27 @@ import * as fs3 from "fs";
 import * as path3 from "path";
 import * as os2 from "os";
 import chalk from "chalk";
+function registerCallAgentTool(findAgent) {
+  const callAgentTool = {
+    name: "call_agent",
+    description: "\u8C03\u7528\u5176\u4ED6 Agent \u534F\u52A9\u5B8C\u6210\u4EFB\u52A1\u3002\u53EF\u7528: coder(\u7F16\u7801), reviewer(\u5BA1\u67E5), researcher(\u8C03\u7814), planner(\u89C4\u5212)",
+    parameters: {
+      agent: { type: "string", description: "\u76EE\u6807 Agent \u540D\u79F0\u6216\u7C7B\u578B (coder/reviewer/researcher/planner)", required: true },
+      task: { type: "string", description: "\u8981\u4EA4\u7ED9\u8BE5 Agent \u7684\u4EFB\u52A1\u63CF\u8FF0", required: true }
+    },
+    execute: async (params) => {
+      const agent = findAgent(params.agent);
+      if (!agent) return `\u672A\u627E\u5230 Agent: ${params.agent}\u3002\u53EF\u7528: coder, reviewer, researcher, planner`;
+      try {
+        const result = await agent.processTask(params.task);
+        return result.content;
+      } catch (error) {
+        return `Agent \u8C03\u7528\u5931\u8D25: ${error.message}`;
+      }
+    }
+  };
+  tools.set("call_agent", callAgentTool);
+}
 function registerTool(tool) {
   tools.set(tool.name, tool);
 }
@@ -479,6 +500,10 @@ function getToolsDescription() {
 - \u8DEF\u5F84\u7528\u6B63\u659C\u6760 /`;
   }
   desc += `
+\u4F60\u53EF\u4EE5\u8C03\u7528\u5176\u4ED6 Agent \u534F\u52A9\u5B8C\u6210\u4EFB\u52A1:
+- call_agent: \u8C03\u7528\u5176\u4ED6 Agent\u3002\u53C2\u6570: agent(\u540D\u79F0), task(\u4EFB\u52A1\u63CF\u8FF0)
+  \u4F8B\u5982: {"tool": "call_agent", "params": {"agent": "reviewer", "task": "\u5BA1\u67E5\u8FD9\u6BB5\u4EE3\u7801"}}
+
 \u53EF\u4EE5\u4E00\u6B21\u8C03\u7528\u591A\u4E2A\u5DE5\u5177\uFF0C\u6BCF\u4E2A\u7528\u5355\u72EC\u7684 tool_call \u4EE3\u7801\u5757\u3002
 \u5DE5\u5177\u6267\u884C\u7ED3\u679C\u4F1A\u81EA\u52A8\u6298\u53E0\uFF0C\u8BF7\u7528\u7B80\u6D01\u7684\u4E2D\u6587\u603B\u7ED3\u7ED9\u7528\u6237\u3002`;
   return desc;
@@ -1147,6 +1172,7 @@ var init_orchestrator = __esm({
     init_agents();
     init_message_bus();
     init_shared_context();
+    init_tools();
     Orchestrator = class extends EventEmitter3 {
       agents = /* @__PURE__ */ new Map();
       planner;
@@ -1163,6 +1189,11 @@ var init_orchestrator = __esm({
         this.config = config;
         this.llm = llm;
         this.initializeAgents();
+        registerCallAgentTool((nameOrType) => {
+          return this.findAgentByType(nameOrType) || Array.from(this.agents.values()).find(
+            (a) => a.name.toLowerCase() === nameOrType.toLowerCase()
+          );
+        });
       }
       setApproveCallback(callback) {
         this.approveCallback = callback;
@@ -1498,12 +1529,47 @@ var init_client = __esm({
   }
 });
 
+// src/utils/markdown.ts
+import { Marked } from "marked";
+import markedTerminal from "marked-terminal";
+import chalk2 from "chalk";
+function renderMarkdown(text) {
+  try {
+    const result = marked.parse(text);
+    if (typeof result === "string") return result;
+    return text;
+  } catch {
+    return text;
+  }
+}
+var marked;
+var init_markdown = __esm({
+  "src/utils/markdown.ts"() {
+    "use strict";
+    marked = new Marked();
+    marked.setOptions({
+      ...markedTerminal,
+      codespan: chalk2.gray,
+      code: chalk2.gray,
+      blockquote: chalk2.gray.italic,
+      heading: chalk2.bold.cyan,
+      firstHeading: chalk2.bold.cyan.underline,
+      link: chalk2.blue.underline,
+      href: chalk2.blue.underline,
+      strong: chalk2.bold,
+      em: chalk2.italic,
+      del: chalk2.strikethrough,
+      listitem: chalk2.white
+    });
+  }
+});
+
 // src/tui/screen.ts
 var screen_exports = {};
 __export(screen_exports, {
   Screen: () => Screen
 });
-import chalk2 from "chalk";
+import chalk3 from "chalk";
 var Screen;
 var init_screen = __esm({
   "src/tui/screen.ts"() {
@@ -1511,6 +1577,7 @@ var init_screen = __esm({
     init_orchestrator();
     init_session();
     init_client();
+    init_markdown();
     Screen = class {
       orchestrator;
       session;
@@ -1582,10 +1649,10 @@ var init_screen = __esm({
         this.redrawInput();
       }
       redrawInput() {
-        process.stdout.write("\r\x1B[K" + chalk2.green("> ") + this.inputBuffer);
+        process.stdout.write("\r\x1B[K" + chalk3.green("> ") + this.inputBuffer);
       }
       showPrompt() {
-        process.stdout.write(chalk2.green("> "));
+        process.stdout.write(chalk3.green("> "));
       }
       cleanup() {
         if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -1594,9 +1661,9 @@ var init_screen = __esm({
       // ─── 欢迎 ───────────────────────────────────────────
       printWelcome() {
         console.log("");
-        console.log(chalk2.bold.cyan("  OpenAgents v3.1"));
-        console.log(chalk2.gray("  \u4F1A\u8BDD: ") + this.session.getName());
-        console.log(chalk2.gray("  \u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4"));
+        console.log(chalk3.bold.cyan("  OpenAgents v3.1"));
+        console.log(chalk3.gray("  \u4F1A\u8BDD: ") + this.session.getName());
+        console.log(chalk3.gray("  \u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4"));
         console.log("");
       }
       // ─── Orchestrator 事件 ─────────────────────────────
@@ -1604,18 +1671,18 @@ var init_screen = __esm({
         this.orchestrator.on("agent_start", (info) => {
           const icon = this.getStatusIcon("working");
           let line = `
-${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
-          if (info.task) line += chalk2.gray(` - ${info.task}`);
+${icon} ${chalk3.bold(info.name)} ${chalk3.gray(info.action)}`;
+          if (info.task) line += chalk3.gray(` - ${info.task}`);
           console.log(line);
         });
         this.orchestrator.on("response", (data) => {
           this.isLoading = false;
           console.log("");
-          console.log(chalk2.yellow.bold(`[${data.agent}]`));
-          console.log(data.content);
+          console.log(chalk3.yellow.bold(`[${data.agent}]`));
+          console.log(renderMarkdown(data.content));
           if (data.toolResults) {
-            console.log(chalk2.gray("\n--- \u5DE5\u5177\u6267\u884C ---"));
-            console.log(chalk2.gray(data.toolResults));
+            console.log(chalk3.gray("\n--- \u5DE5\u5177\u6267\u884C ---"));
+            console.log(chalk3.gray(data.toolResults));
           }
           console.log("");
           this.showPrompt();
@@ -1623,7 +1690,7 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
         this.orchestrator.on("error", (err) => {
           this.isLoading = false;
           console.log("");
-          console.log(chalk2.red(`\u9519\u8BEF: ${err.message}`));
+          console.log(chalk3.red(`\u9519\u8BEF: ${err.message}`));
           console.log("");
           this.showPrompt();
         });
@@ -1631,13 +1698,13 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
       getStatusIcon(status) {
         switch (status) {
           case "working":
-            return chalk2.green("\u25CF");
+            return chalk3.green("\u25CF");
           case "thinking":
-            return chalk2.yellow("\u25D0");
+            return chalk3.yellow("\u25D0");
           case "error":
-            return chalk2.red("\u2717");
+            return chalk3.red("\u2717");
           default:
-            return chalk2.gray("\u25CB");
+            return chalk3.gray("\u25CB");
         }
       }
       // ─── 消息处理 ─────────────────────────────────────
@@ -1647,7 +1714,7 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
           return;
         }
         this.isLoading = true;
-        console.log(chalk2.green(`
+        console.log(chalk3.green(`
 [You] ${line}`));
         this.messages.push({
           id: `msg-${Date.now()}`,
@@ -1661,7 +1728,7 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
           await this.orchestrator.processUserInput(line);
         } catch (error) {
           if (error.name !== "AbortError") {
-            console.log(chalk2.red(`\u9519\u8BEF: ${error.message}`));
+            console.log(chalk3.red(`\u9519\u8BEF: ${error.message}`));
           }
           this.isLoading = false;
         }
@@ -1676,7 +1743,7 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
         switch (cmd) {
           case "quit":
           case "exit":
-            console.log(chalk2.gray("\n\u518D\u89C1\uFF01"));
+            console.log(chalk3.gray("\n\u518D\u89C1\uFF01"));
             this.cleanup();
             process.exit(0);
             break;
@@ -1686,11 +1753,11 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
           case "reset":
             this.orchestrator.resetAllAgents();
             this.messages = [];
-            console.log(chalk2.yellow("\u5DF2\u91CD\u7F6E\u6240\u6709 Agent"));
+            console.log(chalk3.yellow("\u5DF2\u91CD\u7F6E\u6240\u6709 Agent"));
             break;
           case "save":
             this.session.save();
-            console.log(chalk2.green("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58"));
+            console.log(chalk3.green("\u4F1A\u8BDD\u5DF2\u4FDD\u5B58"));
             break;
           case "sessions":
             this.showSessions();
@@ -1700,7 +1767,7 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
             break;
           case "help":
             console.log("");
-            console.log(chalk2.bold("\u53EF\u7528\u547D\u4EE4:"));
+            console.log(chalk3.bold("\u53EF\u7528\u547D\u4EE4:"));
             console.log("  /quit, /exit   \u9000\u51FA");
             console.log("  /clear         \u6E05\u5C4F");
             console.log("  /reset         \u91CD\u7F6E\u6240\u6709 Agent");
@@ -1711,32 +1778,32 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
             console.log("");
             break;
           default:
-            console.log(chalk2.yellow(`\u672A\u77E5\u547D\u4EE4: ${cmd}\uFF0C\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9`));
+            console.log(chalk3.yellow(`\u672A\u77E5\u547D\u4EE4: ${cmd}\uFF0C\u8F93\u5165 /help \u67E5\u770B\u5E2E\u52A9`));
         }
         this.showPrompt();
       }
       showSessions() {
         const sessions = Session.listSessions();
         if (sessions.length === 0) {
-          console.log(chalk2.gray("\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD"));
+          console.log(chalk3.gray("\u6CA1\u6709\u4FDD\u5B58\u7684\u4F1A\u8BDD"));
           return;
         }
         console.log("");
-        console.log(chalk2.bold("\u5386\u53F2\u4F1A\u8BDD:"));
+        console.log(chalk3.bold("\u5386\u53F2\u4F1A\u8BDD:"));
         sessions.forEach((s, i) => {
           const d = new Date(s.updatedAt).toLocaleString();
-          console.log(`  ${i + 1}. ${chalk2.bold(s.name)} (${s.messages.length}\u6761, ${d})`);
+          console.log(`  ${i + 1}. ${chalk3.bold(s.name)} (${s.messages.length}\u6761, ${d})`);
         });
         console.log("");
       }
       showAgents() {
         const state = this.orchestrator.getState();
         console.log("");
-        console.log(chalk2.bold("Agent \u72B6\u6001:"));
+        console.log(chalk3.bold("Agent \u72B6\u6001:"));
         for (const a of state.agents) {
           const icon = this.getStatusIcon(a.status);
           const name = a.name || a.type;
-          const tk = a.tokenUsage > 0 ? chalk2.gray(` (${a.tokenUsage} tokens)`) : "";
+          const tk = a.tokenUsage > 0 ? chalk3.gray(` (${a.tokenUsage} tokens)`) : "";
           console.log(`  ${icon} ${name}${tk}`);
         }
         console.log("");
@@ -1745,12 +1812,12 @@ ${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
       askApproval(tool, params) {
         return new Promise((resolve2) => {
           console.log("");
-          console.log(chalk2.yellow.bold("\u26A0 \u9700\u8981\u5BA1\u6279"));
+          console.log(chalk3.yellow.bold("\u26A0 \u9700\u8981\u5BA1\u6279"));
           console.log(`  \u5DE5\u5177: ${tool}`);
-          console.log(`  \u547D\u4EE4: ${chalk2.red(params.command || "")}`);
+          console.log(`  \u547D\u4EE4: ${chalk3.red(params.command || "")}`);
           if (params.reason) console.log(`  \u539F\u56E0: ${params.reason}`);
           console.log("");
-          process.stdout.write(chalk2.yellow("\u6267\u884C\uFF1F(y/N): "));
+          process.stdout.write(chalk3.yellow("\u6267\u884C\uFF1F(y/N): "));
           this.approvalResolve = resolve2;
         });
       }

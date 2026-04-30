@@ -208,6 +208,32 @@ const getCwdTool: Tool = {
   execute: async () => process.cwd(),
 };
 
+// ========== call_agent 工具（动态注册） ==========
+
+export function registerCallAgentTool(
+  findAgent: (nameOrType: string) => { name: string; processTask: (task: string) => Promise<{ content: string }> } | undefined
+): void {
+  const callAgentTool: Tool = {
+    name: 'call_agent',
+    description: '调用其他 Agent 协助完成任务。可用: coder(编码), reviewer(审查), researcher(调研), planner(规划)',
+    parameters: {
+      agent: { type: 'string', description: '目标 Agent 名称或类型 (coder/reviewer/researcher/planner)', required: true },
+      task: { type: 'string', description: '要交给该 Agent 的任务描述', required: true },
+    },
+    execute: async (params) => {
+      const agent = findAgent(params.agent);
+      if (!agent) return `未找到 Agent: ${params.agent}。可用: coder, reviewer, researcher, planner`;
+      try {
+        const result = await agent.processTask(params.task);
+        return result.content;
+      } catch (error) {
+        return `Agent 调用失败: ${(error as Error).message}`;
+      }
+    },
+  };
+  tools.set('call_agent', callAgentTool);
+}
+
 // ========== 工具注册 ==========
 
 export const tools: Map<string, Tool> = new Map();
@@ -257,6 +283,10 @@ export function getToolsDescription(): string {
   }
 
   desc += `
+你可以调用其他 Agent 协助完成任务:
+- call_agent: 调用其他 Agent。参数: agent(名称), task(任务描述)
+  例如: {"tool": "call_agent", "params": {"agent": "reviewer", "task": "审查这段代码"}}
+
 可以一次调用多个工具，每个用单独的 tool_call 代码块。
 工具执行结果会自动折叠，请用简洁的中文总结给用户。`;
 

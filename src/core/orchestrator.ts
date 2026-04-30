@@ -6,6 +6,7 @@ import type { BaseAgent, AgentState, AgentTaskResult, ApproveCallback } from '..
 import type { TaskPlan } from '../agents/planner.js';
 import { messageBus } from './message-bus.js';
 import { sharedContext } from './shared-context.js';
+import { registerCallAgentTool } from '../tools/index.js';
 
 export type OrchestratorStatus = 'idle' | 'routing' | 'planning' | 'executing' | 'summarizing';
 
@@ -36,6 +37,14 @@ export class Orchestrator extends EventEmitter {
     this.config = config;
     this.llm = llm;
     this.initializeAgents();
+
+    // 注册 call_agent 工具，让 Agent 可以互相调用
+    registerCallAgentTool((nameOrType) => {
+      return this.findAgentByType(nameOrType) ||
+        Array.from(this.agents.values()).find(a =>
+          a.name.toLowerCase() === nameOrType.toLowerCase()
+        );
+    });
   }
 
   setApproveCallback(callback: ApproveCallback): void {
