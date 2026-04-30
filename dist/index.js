@@ -1351,8 +1351,14 @@ ${ctx}` : task.description;
         }
         return void 0;
       }
+      // 轮询计数器，简单问题轮流分配给不同 Agent
+      roundRobinIndex = 0;
       findBestAgent(_purpose) {
-        return this.findAgentByType("coder") || this.findAgentByType("researcher") || Array.from(this.agents.values())[0];
+        const agentList = Array.from(this.agents.values()).filter((a) => a.type !== "planner");
+        if (agentList.length === 0) return void 0;
+        const agent = agentList[this.roundRobinIndex % agentList.length];
+        this.roundRobinIndex++;
+        return agent;
       }
       generateSummary(plan, results) {
         const agentStates = Array.from(this.agents.values()).map((a) => a.getState());

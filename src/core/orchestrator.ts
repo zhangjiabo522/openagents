@@ -238,8 +238,15 @@ export class Orchestrator extends EventEmitter {
     return undefined;
   }
 
+  // 轮询计数器，简单问题轮流分配给不同 Agent
+  private roundRobinIndex = 0;
+
   private findBestAgent(_purpose: string): BaseAgent | undefined {
-    return this.findAgentByType('coder') || this.findAgentByType('researcher') || Array.from(this.agents.values())[0];
+    const agentList = Array.from(this.agents.values()).filter(a => a.type !== 'planner');
+    if (agentList.length === 0) return undefined;
+    const agent = agentList[this.roundRobinIndex % agentList.length];
+    this.roundRobinIndex++;
+    return agent;
   }
 
   private generateSummary(plan: TaskPlan, results: AgentTaskResult[]): string {
