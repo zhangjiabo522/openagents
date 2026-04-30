@@ -22,7 +22,7 @@ marked.setOptions({
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/p>/gi, '\n')
     .replace(/<\/div>/gi, '\n')
     .replace(/<\/li>/gi, '\n')
     .replace(/<\/h[1-6]>/gi, '\n\n')
@@ -37,15 +37,20 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-export function renderMarkdown(text: string): string {
+/** 检测是否主要是 HTML */
+function isHtml(text: string): boolean {
+  const htmlTags = text.match(/<[a-z][^>]*>/gi);
+  return htmlTags !== null && htmlTags.length > 2;
+}
+
+export async function renderMarkdown(text: string): Promise<string> {
   try {
-    // 如果内容主要是 HTML，先去掉标签
-    if (/<[a-z][\s\S]*>/i.test(text) && !text.includes('```')) {
+    // 如果主要是 HTML，先去掉标签
+    if (isHtml(text)) {
       text = stripHtml(text);
     }
-    const result = marked.parse(text);
-    if (typeof result === 'string') return result;
-    return text;
+    const result = await marked.parse(text);
+    return result.trimEnd();
   } catch {
     return text;
   }

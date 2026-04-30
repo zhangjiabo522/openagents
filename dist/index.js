@@ -1534,16 +1534,19 @@ import { Marked } from "marked";
 import markedTerminal from "marked-terminal";
 import chalk2 from "chalk";
 function stripHtml(html) {
-  return html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n\n").replace(/<\/div>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<\/h[1-6]>/gi, "\n\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<\/div>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<\/h[1-6]>/gi, "\n\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
-function renderMarkdown(text) {
+function isHtml(text) {
+  const htmlTags = text.match(/<[a-z][^>]*>/gi);
+  return htmlTags !== null && htmlTags.length > 2;
+}
+async function renderMarkdown(text) {
   try {
-    if (/<[a-z][\s\S]*>/i.test(text) && !text.includes("```")) {
+    if (isHtml(text)) {
       text = stripHtml(text);
     }
-    const result = marked.parse(text);
-    if (typeof result === "string") return result;
-    return text;
+    const result = await marked.parse(text);
+    return result.trimEnd();
   } catch {
     return text;
   }
@@ -1681,11 +1684,12 @@ ${icon} ${chalk3.bold(info.name)} ${chalk3.gray(info.action)}`;
           if (info.task) line += chalk3.gray(` - ${info.task}`);
           console.log(line);
         });
-        this.orchestrator.on("response", (data) => {
+        this.orchestrator.on("response", async (data) => {
           this.isLoading = false;
           console.log("");
           console.log(chalk3.yellow.bold(`[${data.agent}]`));
-          console.log(renderMarkdown(data.content));
+          const rendered = await renderMarkdown(data.content);
+          console.log(rendered);
           if (data.toolResults) {
             console.log(chalk3.gray("\n--- \u5DE5\u5177\u6267\u884C ---"));
             console.log(chalk3.gray(data.toolResults));
