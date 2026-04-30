@@ -18,8 +18,6 @@ export class Screen {
   private isLoading = false;
   private inputBuffer = '';
   private cursorPos = 0;
-
-  // 审批回调
   private approvalResolve?: (v: boolean) => void;
 
   constructor(options: ScreenOptions) {
@@ -41,77 +39,53 @@ export class Screen {
     this.showPrompt();
   }
 
-  // ─── 终端输入（raw mode，手动回显，避免中文双重显示）───
+  // ─── 终端输入 ─────────────────────────────────────
 
   private initInput(): void {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-    }
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.setEncoding('utf-8');
 
     process.stdin.on('data', (data: string) => {
-      // 审批模式
       if (this.approvalResolve) {
-        if (data === 'y' || data === 'Y') {
-          this.approvalResolve(true);
-          this.approvalResolve = undefined;
-        } else if (data === 'n' || data === 'N' || data === '\r' || data === '\n') {
-          this.approvalResolve(false);
-          this.approvalResolve = undefined;
-        }
+        if (data === 'y' || data === 'Y') { this.approvalResolve(true); this.approvalResolve = undefined; }
+        else if (data === 'n' || data === 'N' || data === '\r' || data === '\n') { this.approvalResolve(false); this.approvalResolve = undefined; }
         return;
       }
-
       this.onKey(data);
     });
   }
 
   private onKey(data: string): void {
-    // Ctrl+C
-    if (data === '\x03') {
-      this.cleanup();
-      process.exit(0);
-    }
+    if (data === '\x03') { this.cleanup(); process.exit(0); }
 
-    // Enter
     if (data === '\r' || data === '\n') {
       const line = this.inputBuffer.trim();
       this.inputBuffer = '';
       this.cursorPos = 0;
-      process.stdout.write('\r\x1b[K\n'); // 清行后换行
+      process.stdout.write('\r\x1b[K\n');
       if (line) this.onLine(line);
       else this.showPrompt();
       return;
     }
 
-    // Backspace
     if (data === '\x7f' || data === '\b') {
       if (this.cursorPos > 0) {
-        this.inputBuffer =
-          this.inputBuffer.slice(0, this.cursorPos - 1) +
-          this.inputBuffer.slice(this.cursorPos);
+        this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
         this.cursorPos--;
-        this.redrawInputLine();
+        this.redrawInput();
       }
       return;
     }
 
-    // 跳过 ESC 序列和其他控制字符
-    if (data.startsWith('\x1b')) return;
-    if (data.charCodeAt(0) < 32) return;
+    if (data.startsWith('\x1b') || data.charCodeAt(0) < 32) return;
 
-    // 普通字符：不直接回显（避免终端重复），而是重绘整行
-    this.inputBuffer =
-      this.inputBuffer.slice(0, this.cursorPos) +
-      data +
-      this.inputBuffer.slice(this.cursorPos);
+    this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + data + this.inputBuffer.slice(this.cursorPos);
     this.cursorPos += data.length;
-    this.redrawInputLine();
+    this.redrawInput();
   }
 
-  /** 重绘输入行：清行 → 写提示符+缓冲区 */
-  private redrawInputLine(): void {
+  private redrawInput(): void {
     process.stdout.write('\r\x1b[K' + chalk.green('> ') + this.inputBuffer);
   }
 
@@ -120,9 +94,7 @@ export class Screen {
   }
 
   private cleanup(): void {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
     process.stdin.pause();
   }
 
@@ -139,15 +111,29 @@ export class Screen {
   // ─── Orchestrator 事件 ─────────────────────────────
 
   private bindOrchestrator(): void {
-    this.orchestrator.on('response', (text: string) => {
+    // Agent 开始工作
+    this.orchestrator.on('agent_start', (info: { name: string; type: string; action: string; task?: string }) => {
+      const icon = this.getStatusIcon('working');
+      let line = `\n${icon} ${chalk.bold(info.name)} ${chalk.gray(info.action)}`;
+      if (info.task) line += chalk.gray(` - ${info.task}`);
+      console.log(line);
+    });
+
+    // Agent 回复
+    this.orchestrator.on('response', (data: { agent: string; content: string; toolResults?: string }) => {
       this.isLoading = false;
       console.log('');
-      console.log(chalk.yellow.bold('[Agent]'));
-      console.log(text);
+      console.log(chalk.yellow.bold(`[${data.agent}]`));
+      console.log(data.content);
+      if (data.toolResults) {
+        console.log(chalk.gray('\n--- 工具执行 ---'));
+        console.log(chalk.gray(data.toolResults));
+      }
       console.log('');
       this.showPrompt();
     });
 
+    // 错误
     this.orchestrator.on('error', (err: Error) => {
       this.isLoading = false;
       console.log('');
@@ -157,23 +143,26 @@ export class Screen {
     });
   }
 
+  private getStatusIcon(status: string): string {
+    switch (status) {
+      case 'working':  return chalk.green('●');
+      case 'thinking': return chalk.yellow('◐');
+      case 'error':    return chalk.red('✗');
+      default:         return chalk.gray('○');
+    }
+  }
+
   // ─── 消息处理 ─────────────────────────────────────
 
   private async onLine(line: string): Promise<void> {
-    if (line.startsWith('/')) {
-      this.handleCommand(line);
-      return;
-    }
+    if (line.startsWith('/')) { this.handleCommand(line); return; }
 
     this.isLoading = true;
     console.log(chalk.green(`\n[You] ${line}`));
 
     this.messages.push({
-      id: `msg-${Date.now()}`,
-      type: 'user_input',
-      from: 'user',
-      content: line,
-      timestamp: new Date(),
+      id: `msg-${Date.now()}`, type: 'user_input', from: 'user',
+      content: line, timestamp: new Date(),
     });
     this.session.addMessage(this.messages[this.messages.length - 1]);
 
@@ -187,39 +176,22 @@ export class Screen {
     }
 
     this.session.save();
-    if (this.isLoading) {
-      this.isLoading = false;
-      this.showPrompt();
-    }
+    if (this.isLoading) { this.isLoading = false; this.showPrompt(); }
   }
 
   private handleCommand(input: string): void {
     const cmd = input.slice(1).trim().split(' ')[0];
-
     switch (cmd) {
       case 'quit': case 'exit':
-        console.log(chalk.gray('\n再见！'));
-        this.cleanup();
-        process.exit(0);
-        break;
-      case 'clear':
-        console.clear();
-        break;
+        console.log(chalk.gray('\n再见！')); this.cleanup(); process.exit(0); break;
+      case 'clear': console.clear(); break;
       case 'reset':
-        this.orchestrator.resetAllAgents();
-        this.messages = [];
-        console.log(chalk.yellow('已重置所有 Agent'));
-        break;
+        this.orchestrator.resetAllAgents(); this.messages = [];
+        console.log(chalk.yellow('已重置所有 Agent')); break;
       case 'save':
-        this.session.save();
-        console.log(chalk.green('会话已保存'));
-        break;
-      case 'sessions':
-        this.showSessions();
-        break;
-      case 'agents':
-        this.showAgents();
-        break;
+        this.session.save(); console.log(chalk.green('会话已保存')); break;
+      case 'sessions': this.showSessions(); break;
+      case 'agents': this.showAgents(); break;
       case 'help':
         console.log('');
         console.log(chalk.bold('可用命令:'));
@@ -235,16 +207,12 @@ export class Screen {
       default:
         console.log(chalk.yellow(`未知命令: ${cmd}，输入 /help 查看帮助`));
     }
-
     this.showPrompt();
   }
 
   private showSessions(): void {
     const sessions = Session.listSessions();
-    if (sessions.length === 0) {
-      console.log(chalk.gray('没有保存的会话'));
-      return;
-    }
+    if (sessions.length === 0) { console.log(chalk.gray('没有保存的会话')); return; }
     console.log('');
     console.log(chalk.bold('历史会话:'));
     sessions.forEach((s, i) => {
@@ -259,14 +227,7 @@ export class Screen {
     console.log('');
     console.log(chalk.bold('Agent 状态:'));
     for (const a of state.agents) {
-      let icon: string;
-      switch (a.status) {
-        case 'idle':     icon = chalk.gray('○'); break;
-        case 'working':  icon = chalk.green('●'); break;
-        case 'thinking': icon = chalk.yellow('◐'); break;
-        case 'error':    icon = chalk.red('✗'); break;
-        default:         icon = '?';
-      }
+      const icon = this.getStatusIcon(a.status);
       const name = a.name || a.type;
       const tk = a.tokenUsage > 0 ? chalk.gray(` (${a.tokenUsage} tokens)`) : '';
       console.log(`  ${icon} ${name}${tk}`);
@@ -278,13 +239,11 @@ export class Screen {
 
   private askApproval(tool: string, params: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
-      const cmd = params.command || '';
-      const reason = params.reason || '';
       console.log('');
       console.log(chalk.yellow.bold('⚠ 需要审批'));
       console.log(`  工具: ${tool}`);
-      console.log(`  命令: ${chalk.red(cmd)}`);
-      if (reason) console.log(`  原因: ${reason}`);
+      console.log(`  命令: ${chalk.red(params.command || '')}`);
+      if (params.reason) console.log(`  原因: ${params.reason}`);
       console.log('');
       process.stdout.write(chalk.yellow('执行？(y/N): '));
       this.approvalResolve = resolve;

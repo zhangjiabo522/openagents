@@ -1204,11 +1204,7 @@ var init_orchestrator = __esm({
       }
       async processUserInput(input) {
         this.aborted = false;
-        messageBus.publish({
-          type: "user_input",
-          from: "user",
-          content: input
-        });
+        messageBus.publish({ type: "user_input", from: "user", content: input });
         this.setStatus("routing");
         const category = this.categorizeInput(input);
         switch (category) {
@@ -1228,70 +1224,48 @@ var init_orchestrator = __esm({
       }
       categorizeInput(input) {
         const lower = input.toLowerCase().trim();
-        const simplePatterns = [
-          /^你是/,
-          /^你能/,
-          /^介绍一下/,
-          /^what/i,
-          /^who/i,
-          /^help$/i,
-          /^帮助$/,
-          /^你好/,
-          /^hello/i,
-          /^hi$/i,
-          /^什么意思/,
-          /^什么是/,
-          /^怎么理解/
-        ];
-        if (input.length < 50 && simplePatterns.some((p) => p.test(lower))) {
+        if (input.length < 50 && [/^你是/, /^你能/, /^你好/, /^hello/i, /^hi$/i, /^help$/i, /^介绍/].some((p) => p.test(lower))) {
           return "simple_question";
         }
-        const discussionPatterns = [
-          /你觉得/,
-          /你认为/,
-          /怎么看/,
-          /有什么看法/,
-          /建议/,
-          /推荐/,
-          /比较.*和/,
-          /优缺点/
-        ];
-        if (discussionPatterns.some((p) => p.test(lower))) {
+        if ([/你觉得/, /建议/, /推荐/, /比较.*和/, /优缺点/].some((p) => p.test(lower))) {
           return "discussion";
         }
-        if (input.length > 200 || /首先.*然后.*最后/.test(lower) || /创建.*项目.*配置/.test(lower)) {
+        if (input.length > 200 || /首先.*然后.*最后/.test(lower)) {
           return "complex_task";
         }
         return "direct_task";
       }
       async handleSimpleQuestion(input) {
-        this.setStatus("executing");
         const agent = this.findBestAgent("answer");
         if (!agent) return;
+        this.emit("agent_start", { name: agent.name, type: agent.type, action: "\u601D\u8003\u4E2D" });
+        this.setStatus("executing");
         try {
           const result = await agent.processTask(input);
           if (this.aborted) return;
-          this.emit("response", result.content);
+          this.emit("response", { agent: agent.name, content: result.content });
         } catch (error) {
           if (!this.aborted) this.emit("error", error);
         }
         if (!this.aborted) this.setStatus("idle");
       }
       async handleDirectTask(input) {
-        this.setStatus("executing");
         const agent = this.findBestAgentForTask(input);
         if (!agent) return;
+        this.emit("agent_start", { name: agent.name, type: agent.type, action: "\u6267\u884C\u4EFB\u52A1" });
+        this.setStatus("executing");
         try {
           const result = await agent.processTask(input);
           if (this.aborted) return;
           const output = result.toolSummary || result.content;
-          this.emit("response", output);
+          this.emit("response", { agent: agent.name, content: output, toolResults: result.toolResults });
         } catch (error) {
           if (!this.aborted) this.emit("error", error);
         }
         if (!this.aborted) this.setStatus("idle");
       }
       async handleComplexTask(input) {
+        this.emit("agent_start", { name: "Planner", type: "planner", action: "\u5206\u89E3\u4EFB\u52A1" });
         this.setStatus("planning");
         try {
           const plan = await this.planner.planTask(input);
@@ -1300,11 +1274,44 @@ var init_orchestrator = __esm({
           this.totalTasks = plan.tasks.length;
           this.completedTasks = 0;
           this.setStatus("executing");
-          const results = await this.executePlan(plan);
+          const results = [];
+          const executed = /* @__PURE__ */ new Set();
+          while (executed.size < plan.tasks.length) {
+            const readyTasks = plan.tasks.filter(
+              (t) => !executed.has(t.id) && t.dependencies.every((d) => executed.has(d))
+            );
+            if (readyTasks.length === 0) break;
+            for (const task of readyTasks) {
+              if (this.aborted) break;
+              const agent = this.findAgentByType(task.assignee) || this.findBestAgent("general");
+              if (!agent) {
+                executed.add(task.id);
+                continue;
+              }
+              this.emit("agent_start", {
+                name: agent.name,
+                type: agent.type,
+                action: `\u4EFB\u52A1 ${this.completedTasks + 1}/${this.totalTasks}`,
+                task: task.description.slice(0, 50)
+              });
+              try {
+                const ctx = sharedContext.buildContextSummary(agent.id);
+                const desc = ctx.length > 50 ? `${task.description}
+
+${ctx}` : task.description;
+                const result = await agent.processTask(desc);
+                results.push(result);
+                executed.add(task.id);
+                this.completedTasks++;
+              } catch {
+                executed.add(task.id);
+              }
+            }
+          }
           if (this.aborted) return;
           this.setStatus("summarizing");
           const summary = this.generateSummary(plan, results);
-          this.emit("response", summary);
+          this.emit("response", { agent: "Planner", content: summary });
         } catch (error) {
           if (!this.aborted) this.emit("error", error);
         }
@@ -1316,6 +1323,7 @@ var init_orchestrator = __esm({
         const activeAgents = Array.from(this.agents.values()).filter((a) => a.type !== "planner").slice(0, 2);
         for (const agent of activeAgents) {
           if (this.aborted) break;
+          this.emit("agent_start", { name: agent.name, type: agent.type, action: "\u56DE\u7B54\u4E2D" });
           try {
             const result = await agent.processTask(`\u7528\u6237\u63D0\u95EE: "${input}"
 \u8BF7\u4ECE\u4F60\u7684\u4E13\u4E1A\u89D2\u5EA6\u56DE\u7B54\u3002`);
@@ -1326,21 +1334,15 @@ var init_orchestrator = __esm({
           }
         }
         if (!this.aborted) {
-          this.emit("response", responses.join("\n\n---\n\n"));
+          this.emit("response", { agent: "\u591A\u4E2AAgent", content: responses.join("\n\n---\n\n") });
           this.setStatus("idle");
         }
       }
       findBestAgentForTask(input) {
         const lower = input.toLowerCase();
-        if (/代码|编程|函数|bug|修复|实现|写|创建|文件|脚本/.test(lower)) {
-          return this.findAgentByType("coder");
-        }
-        if (/审查|review|检查|优化/.test(lower)) {
-          return this.findAgentByType("reviewer");
-        }
-        if (/调研|研究|分析|对比|选型/.test(lower)) {
-          return this.findAgentByType("researcher");
-        }
+        if (/代码|编程|函数|bug|修复|实现|写|创建|文件|脚本/.test(lower)) return this.findAgentByType("coder");
+        if (/审查|review|检查|优化/.test(lower)) return this.findAgentByType("reviewer");
+        if (/调研|研究|分析|对比|选型/.test(lower)) return this.findAgentByType("researcher");
         return this.findAgentByType("coder") || this.findBestAgent("general");
       }
       findAgentByType(type) {
@@ -1349,39 +1351,8 @@ var init_orchestrator = __esm({
         }
         return void 0;
       }
-      findBestAgent(purpose) {
+      findBestAgent(_purpose) {
         return this.findAgentByType("coder") || this.findAgentByType("researcher") || Array.from(this.agents.values())[0];
-      }
-      async executePlan(plan) {
-        const executed = /* @__PURE__ */ new Set();
-        const allResults = [];
-        while (executed.size < plan.tasks.length) {
-          const readyTasks = plan.tasks.filter(
-            (task) => !executed.has(task.id) && task.dependencies.every((dep) => executed.has(dep))
-          );
-          if (readyTasks.length === 0) break;
-          for (const task of readyTasks) {
-            const agent = this.findAgentByType(task.assignee) || this.findBestAgent("general");
-            if (!agent) {
-              executed.add(task.id);
-              continue;
-            }
-            try {
-              const contextInfo = sharedContext.buildContextSummary(agent.id);
-              const taskWithContext = contextInfo.length > 50 ? `${task.description}
-
-${contextInfo}` : task.description;
-              const result = await agent.processTask(taskWithContext);
-              allResults.push(result);
-              executed.add(task.id);
-              this.completedTasks++;
-              this.emit("task_complete", task);
-            } catch {
-              executed.add(task.id);
-            }
-          }
-        }
-        return allResults;
       }
       generateSummary(plan, results) {
         const agentStates = Array.from(this.agents.values()).map((a) => a.getState());
@@ -1389,12 +1360,8 @@ ${contextInfo}` : task.description;
         let output = `\u4EFB\u52A1\u5B8C\u6210 (${this.totalTasks}\u9879, ${totalTokens} tokens)
 
 `;
-        for (const result of results) {
-          if (result.toolSummary) {
-            output += result.toolSummary + "\n\n";
-          } else if (result.content) {
-            output += result.content.slice(0, 300) + "\n\n";
-          }
+        for (const r of results) {
+          output += (r.toolSummary || r.content?.slice(0, 300) || "") + "\n\n";
         }
         return output.trim();
       }
@@ -1418,9 +1385,7 @@ ${contextInfo}` : task.description;
         return Array.from(this.agents.values());
       }
       resetAllAgents() {
-        for (const agent of this.agents.values()) {
-          agent.reset();
-        }
+        for (const agent of this.agents.values()) agent.reset();
         sharedContext.clear();
         this.currentPlan = void 0;
         this.completedTasks = 0;
@@ -1547,7 +1512,6 @@ var init_screen = __esm({
       isLoading = false;
       inputBuffer = "";
       cursorPos = 0;
-      // 审批回调
       approvalResolve;
       constructor(options) {
         const llm = new LLMClient(options.config.providers);
@@ -1565,11 +1529,9 @@ var init_screen = __esm({
         this.printWelcome();
         this.showPrompt();
       }
-      // ─── 终端输入（raw mode，手动回显，避免中文双重显示）───
+      // ─── 终端输入 ─────────────────────────────────────
       initInput() {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-        }
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
         process.stdin.resume();
         process.stdin.setEncoding("utf-8");
         process.stdin.on("data", (data) => {
@@ -1604,27 +1566,23 @@ var init_screen = __esm({
           if (this.cursorPos > 0) {
             this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos - 1) + this.inputBuffer.slice(this.cursorPos);
             this.cursorPos--;
-            this.redrawInputLine();
+            this.redrawInput();
           }
           return;
         }
-        if (data.startsWith("\x1B")) return;
-        if (data.charCodeAt(0) < 32) return;
+        if (data.startsWith("\x1B") || data.charCodeAt(0) < 32) return;
         this.inputBuffer = this.inputBuffer.slice(0, this.cursorPos) + data + this.inputBuffer.slice(this.cursorPos);
         this.cursorPos += data.length;
-        this.redrawInputLine();
+        this.redrawInput();
       }
-      /** 重绘输入行：清行 → 写提示符+缓冲区 */
-      redrawInputLine() {
+      redrawInput() {
         process.stdout.write("\r\x1B[K" + chalk2.green("> ") + this.inputBuffer);
       }
       showPrompt() {
         process.stdout.write(chalk2.green("> "));
       }
       cleanup() {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-        }
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
         process.stdin.pause();
       }
       // ─── 欢迎 ───────────────────────────────────────────
@@ -1637,11 +1595,22 @@ var init_screen = __esm({
       }
       // ─── Orchestrator 事件 ─────────────────────────────
       bindOrchestrator() {
-        this.orchestrator.on("response", (text) => {
+        this.orchestrator.on("agent_start", (info) => {
+          const icon = this.getStatusIcon("working");
+          let line = `
+${icon} ${chalk2.bold(info.name)} ${chalk2.gray(info.action)}`;
+          if (info.task) line += chalk2.gray(` - ${info.task}`);
+          console.log(line);
+        });
+        this.orchestrator.on("response", (data) => {
           this.isLoading = false;
           console.log("");
-          console.log(chalk2.yellow.bold("[Agent]"));
-          console.log(text);
+          console.log(chalk2.yellow.bold(`[${data.agent}]`));
+          console.log(data.content);
+          if (data.toolResults) {
+            console.log(chalk2.gray("\n--- \u5DE5\u5177\u6267\u884C ---"));
+            console.log(chalk2.gray(data.toolResults));
+          }
           console.log("");
           this.showPrompt();
         });
@@ -1652,6 +1621,18 @@ var init_screen = __esm({
           console.log("");
           this.showPrompt();
         });
+      }
+      getStatusIcon(status) {
+        switch (status) {
+          case "working":
+            return chalk2.green("\u25CF");
+          case "thinking":
+            return chalk2.yellow("\u25D0");
+          case "error":
+            return chalk2.red("\u2717");
+          default:
+            return chalk2.gray("\u25CB");
+        }
       }
       // ─── 消息处理 ─────────────────────────────────────
       async onLine(line) {
@@ -1747,23 +1728,7 @@ var init_screen = __esm({
         console.log("");
         console.log(chalk2.bold("Agent \u72B6\u6001:"));
         for (const a of state.agents) {
-          let icon;
-          switch (a.status) {
-            case "idle":
-              icon = chalk2.gray("\u25CB");
-              break;
-            case "working":
-              icon = chalk2.green("\u25CF");
-              break;
-            case "thinking":
-              icon = chalk2.yellow("\u25D0");
-              break;
-            case "error":
-              icon = chalk2.red("\u2717");
-              break;
-            default:
-              icon = "?";
-          }
+          const icon = this.getStatusIcon(a.status);
           const name = a.name || a.type;
           const tk = a.tokenUsage > 0 ? chalk2.gray(` (${a.tokenUsage} tokens)`) : "";
           console.log(`  ${icon} ${name}${tk}`);
@@ -1773,13 +1738,11 @@ var init_screen = __esm({
       // ─── 审批 ───────────────────────────────────────────
       askApproval(tool, params) {
         return new Promise((resolve2) => {
-          const cmd = params.command || "";
-          const reason = params.reason || "";
           console.log("");
           console.log(chalk2.yellow.bold("\u26A0 \u9700\u8981\u5BA1\u6279"));
           console.log(`  \u5DE5\u5177: ${tool}`);
-          console.log(`  \u547D\u4EE4: ${chalk2.red(cmd)}`);
-          if (reason) console.log(`  \u539F\u56E0: ${reason}`);
+          console.log(`  \u547D\u4EE4: ${chalk2.red(params.command || "")}`);
+          if (params.reason) console.log(`  \u539F\u56E0: ${params.reason}`);
           console.log("");
           process.stdout.write(chalk2.yellow("\u6267\u884C\uFF1F(y/N): "));
           this.approvalResolve = resolve2;
@@ -2149,7 +2112,7 @@ async function runUninstall() {
 // src/cli/commands.ts
 function createCommands() {
   const program2 = new Command();
-  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.1.0", "-v, --version", "\u663E\u793A\u7248\u672C\u53F7");
+  program2.name("openagents").description("Terminal multi-agent collaboration tool").version("3.2.0", "-v, --version", "\u663E\u793A\u7248\u672C\u53F7");
   program2.command("start").description("Start an interactive session").option("-n, --name <name>", "Session name").option("-r, --resume <id>", "Resume a session by ID").action(async (options) => {
   });
   program2.command("resume").description("Resume the most recent session").action(async () => {
